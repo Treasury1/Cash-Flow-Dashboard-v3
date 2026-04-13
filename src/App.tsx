@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useMemo, useRef, ChangeEvent } from 'react';
+import { useState, useMemo, useRef, ChangeEvent, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { 
   LayoutDashboard, 
@@ -75,12 +75,12 @@ const gapData = [
 const recentActivityData = [
   { id: 1, date: '2026-04-10', category: 'Project Payment', amount: 15000000, type: 'Inflow', month: 'April' },
   { id: 2, date: '2026-04-08', category: 'Operational Cost', amount: 5000000, type: 'Outflow', month: 'April' },
-  { id: 3, date: '2026-03-25', category: 'Consultancy Fee', amount: 12000000, type: 'Inflow', month: 'March' },
-  { id: 4, date: '2026-03-15', category: 'Office Rent', amount: 8000000, type: 'Outflow', month: 'March' },
-  { id: 5, date: '2026-02-20', category: 'Equipment Purchase', amount: 25000000, type: 'Outflow', month: 'February' },
-  { id: 6, date: '2026-02-10', category: 'Service Revenue', amount: 30000000, type: 'Inflow', month: 'February' },
-  { id: 7, date: '2026-01-15', category: 'Tax Payment', amount: 4000000, type: 'Outflow', month: 'January' },
-  { id: 8, date: '2026-01-05', category: 'Investment Return', amount: 18000000, type: 'Inflow', month: 'January' },
+  { id: 3, date: '2026-03-25', category: 'Consultancy Fee', amount: 12000000, type: 'Inflow', month: 'Maret' },
+  { id: 4, date: '2026-03-15', category: 'Office Rent', amount: 8000000, type: 'Outflow', month: 'Maret' },
+  { id: 5, date: '2026-02-20', category: 'Equipment Purchase', amount: 25000000, type: 'Outflow', month: 'Februari' },
+  { id: 6, date: '2026-02-10', category: 'Service Revenue', amount: 30000000, type: 'Inflow', month: 'Februari' },
+  { id: 7, date: '2026-01-15', category: 'Tax Payment', amount: 4000000, type: 'Outflow', month: 'Januari' },
+  { id: 8, date: '2026-01-05', category: 'Investment Return', amount: 18000000, type: 'Inflow', month: 'Januari' },
 ];
 
 export default function App() {
@@ -89,23 +89,37 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   
   // Recent Activity States
-  const [activities, setActivities] = useState<any[]>([]);
+  const [activities, setActivities] = useState<any[]>(() => {
+    const saved = localStorage.getItem('finance_activities');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [typeFilter, setTypeFilter] = useState('All');
   const [monthFilter, setMonthFilter] = useState('April'); // Default to April as per previous context
   const [isUploading, setIsUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [incomingPayments, setIncomingPayments] = useState<Record<string, number>>({
-    'All': 402632575,
-    'April': 402632575
+  const [incomingPayments, setIncomingPayments] = useState<Record<string, number>>(() => {
+    const saved = localStorage.getItem('finance_incoming_payments');
+    return saved ? JSON.parse(saved) : {
+      'All': 402632575,
+      'April': 402632575,
+      'Mei': 0
+    };
   });
   const incomingFileInputRef = useRef<HTMLInputElement>(null);
 
   // Bank Account Status State
-  const [bankStatusByMonth, setBankStatusByMonth] = useState<Record<string, { current: number, closed: number }>>({
-    'All': { current: 56, closed: 42 },
-    'April': { current: 56, closed: 42 }
+  const [bankStatusByMonth, setBankStatusByMonth] = useState<Record<string, { current: number, closed: number }>>(() => {
+    const saved = localStorage.getItem('finance_bank_status');
+    return saved ? JSON.parse(saved) : {
+      'All': { current: 56, closed: 42 },
+      'Januari': { current: 56, closed: 42 },
+      'Februari': { current: 56, closed: 42 },
+      'Maret': { current: 56, closed: 42 },
+      'April': { current: 56, closed: 42 },
+      'Mei': { current: 56, closed: 42 }
+    };
   });
   const [isEditingBank, setIsEditingBank] = useState(false);
   const [tempBankStatus, setTempBankStatus] = useState({ current: 56, closed: 42 });
@@ -113,17 +127,25 @@ export default function App() {
   const bankStatus = bankStatusByMonth[monthFilter] || { current: 0, closed: 0 };
 
   // GAP Analysis State
-  const [gapsByMonth, setGapsByMonth] = useState<Record<string, any[]>>({
-    'All': [
-      { id: 'giro', name: 'Giro', amount: 80415428, color: '#8b5cf6', isEditing: false, currency: 'IDR' },
-      { id: 'deposito_idr', name: 'Deposito IDR', amount: 46538100, color: '#ec4899', isEditing: false, currency: 'IDR' },
-      { id: 'deposito_usd', name: 'Deposito USD', amount: 0, color: '#f59e0b', isEditing: false, currency: 'USD' },
-    ],
-    'April': [
-      { id: 'giro', name: 'Giro', amount: 80415428, color: '#8b5cf6', isEditing: false, currency: 'IDR' },
-      { id: 'deposito_idr', name: 'Deposito IDR', amount: 46538100, color: '#ec4899', isEditing: false, currency: 'IDR' },
-      { id: 'deposito_usd', name: 'Deposito USD', amount: 0, color: '#f59e0b', isEditing: false, currency: 'USD' },
-    ]
+  const [gapsByMonth, setGapsByMonth] = useState<Record<string, any[]>>(() => {
+    const saved = localStorage.getItem('finance_gaps');
+    return saved ? JSON.parse(saved) : {
+      'All': [
+        { id: 'giro', name: 'Giro', amount: 80415428, color: '#8b5cf6', isEditing: false, currency: 'IDR' },
+        { id: 'deposito_idr', name: 'Deposito IDR', amount: 46538100, color: '#ec4899', isEditing: false, currency: 'IDR' },
+        { id: 'deposito_usd', name: 'Deposito USD', amount: 0, color: '#f59e0b', isEditing: false, currency: 'USD' },
+      ],
+      'Januari': [
+        { id: 'giro', name: 'Giro', amount: 80415428, color: '#8b5cf6', isEditing: false, currency: 'IDR' },
+        { id: 'deposito_idr', name: 'Deposito IDR', amount: 46538100, color: '#ec4899', isEditing: false, currency: 'IDR' },
+        { id: 'deposito_usd', name: 'Deposito USD', amount: 0, color: '#f59e0b', isEditing: false, currency: 'USD' },
+      ],
+      'April': [
+        { id: 'giro', name: 'Giro', amount: 80415428, color: '#8b5cf6', isEditing: false, currency: 'IDR' },
+        { id: 'deposito_idr', name: 'Deposito IDR', amount: 46538100, color: '#ec4899', isEditing: false, currency: 'IDR' },
+        { id: 'deposito_usd', name: 'Deposito USD', amount: 0, color: '#f59e0b', isEditing: false, currency: 'USD' },
+      ]
+    };
   });
 
   const gaps = gapsByMonth[monthFilter] || [
@@ -133,15 +155,22 @@ export default function App() {
   ];
 
   // Branch Table State
-  const [branchDataByMonth, setBranchDataByMonth] = useState<Record<string, any[]>>({
-    'All': [
-      { dept: 'Kantor Pusat', bri: 0, bni: 0, mandiri: 0, others: 0 },
-      { dept: 'xyz', bri: 0, bni: 0, mandiri: 0, others: 0 },
-    ],
-    'April': [
-      { dept: 'Kantor Pusat', bri: 0, bni: 0, mandiri: 0, others: 0 },
-      { dept: 'xyz', bri: 0, bni: 0, mandiri: 0, others: 0 },
-    ]
+  const [branchDataByMonth, setBranchDataByMonth] = useState<Record<string, any[]>>(() => {
+    const saved = localStorage.getItem('finance_branch_data');
+    return saved ? JSON.parse(saved) : {
+      'All': [
+        { dept: 'Kantor Pusat', bri: 0, bni: 0, mandiri: 0, others: 0 },
+        { dept: 'xyz', bri: 0, bni: 0, mandiri: 0, others: 0 },
+      ],
+      'Januari': [
+        { dept: 'Kantor Pusat', bri: 0, bni: 0, mandiri: 0, others: 0 },
+        { dept: 'xyz', bri: 0, bni: 0, mandiri: 0, others: 0 },
+      ],
+      'April': [
+        { dept: 'Kantor Pusat', bri: 0, bni: 0, mandiri: 0, others: 0 },
+        { dept: 'xyz', bri: 0, bni: 0, mandiri: 0, others: 0 },
+      ]
+    };
   });
 
   const branchData = branchDataByMonth[monthFilter] || [
@@ -222,7 +251,7 @@ export default function App() {
   };
 
   const dynamicMonthlyTrend = useMemo(() => {
-    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
     return months.map(month => {
       const monthActivities = activities.filter(a => a.month === month);
       const inflow = monthActivities
@@ -321,7 +350,7 @@ export default function App() {
     return details;
   }, [dashboardActivities, totalOutflow]);
 
-  const monthsList = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const monthsList = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
   const cumulativeMonthlyBalances = useMemo(() => {
     let cumulative = 0;
@@ -351,19 +380,62 @@ export default function App() {
     return val.toLocaleString('id-ID');
   }, [incomingPayments, monthFilter]);
 
-  const totalActuals = totalInflow;
-  const dummyTarget = totalActuals > 0 ? totalActuals * 1.08 : 305000000; // 8% gap as per original UI
+  const [targetsByMonth, setTargetsByMonth] = useState<Record<string, number>>(() => {
+    const saved = localStorage.getItem('finance_targets');
+    return saved ? JSON.parse(saved) : {
+      'All': 305000000,
+      'April': 305000000
+    };
+  });
+  const [isEditingTarget, setIsEditingTarget] = useState(false);
+  const [tempTarget, setTempTarget] = useState(305000000);
+
+  // Persistence Effects
+  useEffect(() => {
+    localStorage.setItem('finance_activities', JSON.stringify(activities));
+  }, [activities]);
+
+  useEffect(() => {
+    localStorage.setItem('finance_incoming_payments', JSON.stringify(incomingPayments));
+  }, [incomingPayments]);
+
+  useEffect(() => {
+    localStorage.setItem('finance_bank_status', JSON.stringify(bankStatusByMonth));
+  }, [bankStatusByMonth]);
+
+  useEffect(() => {
+    localStorage.setItem('finance_gaps', JSON.stringify(gapsByMonth));
+  }, [gapsByMonth]);
+
+  useEffect(() => {
+    localStorage.setItem('finance_branch_data', JSON.stringify(branchDataByMonth));
+  }, [branchDataByMonth]);
+
+  useEffect(() => {
+    localStorage.setItem('finance_targets', JSON.stringify(targetsByMonth));
+  }, [targetsByMonth]);
+
+  const totalActuals = totalInflow - totalOutflow;
+  const dummyTarget = targetsByMonth[monthFilter] || 0;
   const gapValue = totalActuals - dummyTarget;
   const gapPercentage = dummyTarget !== 0 ? (gapValue / dummyTarget) * 100 : 0;
 
+  const handleSaveTarget = () => {
+    setTargetsByMonth(prev => ({
+      ...prev,
+      [monthFilter]: tempTarget
+    }));
+    setIsEditingTarget(false);
+  };
+
   const stats = [
-    { label: 'Cash Inflow', value: totalInflow.toLocaleString('id-ID'), sub: 'Rp', icon: <TrendingUp className="text-blue-500" size={20} /> },
-    { label: 'Cash Outflow', value: totalOutflow.toLocaleString('id-ID'), sub: 'Rp', icon: <TrendingDown className="text-red-500" size={20} /> },
-    { label: 'Monthly Balance', value: monthlyBalance.toLocaleString('id-ID'), sub: 'Rp', icon: <DollarSign className="text-green-500" size={20} /> },
-    { label: 'Incoming Payment', value: currentIncomingPayment, sub: 'Active', icon: <BarChart3 className="text-gray-400" size={20} />, isIncoming: true },
+    { label: 'Cash Inflow', value: totalInflow.toLocaleString('id-ID'), sub: `Rp (${monthFilter === 'All' ? 'Tahun' : monthFilter})`, icon: <TrendingUp className="text-blue-500" size={20} /> },
+    { label: 'Cash Outflow', value: totalOutflow.toLocaleString('id-ID'), sub: `Rp (${monthFilter === 'All' ? 'Tahun' : monthFilter})`, icon: <TrendingDown className="text-red-500" size={20} /> },
+    { label: 'Monthly Balance', value: monthlyBalance.toLocaleString('id-ID'), sub: `Rp (${monthFilter === 'All' ? 'Tahun' : monthFilter})`, icon: <DollarSign className="text-green-500" size={20} /> },
+    { label: 'Incoming Payment', value: currentIncomingPayment, sub: `Aktif (${monthFilter === 'All' ? 'Tahun' : monthFilter})`, icon: <BarChart3 className="text-gray-400" size={20} />, isIncoming: true },
   ];
 
-  const months = ['All', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const months = ['All', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
@@ -896,12 +968,42 @@ export default function App() {
                   </ResponsiveContainer>
                 </div>
                 <div className="grid grid-cols-3 gap-4 mt-6">
-                  <div className="text-center">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Total Targets For {monthFilter === 'All' ? 'Year' : monthFilter}</p>
-                    <p className="text-xl font-black text-gray-800">{(dummyTarget / 1000000).toFixed(0)} M</p>
+                  <div className="text-center relative group">
+                    <div className="flex items-center justify-center gap-1 mb-1">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase">Total Targets For {monthFilter === 'All' ? 'Year' : monthFilter.toUpperCase()}</p>
+                      <button 
+                        onClick={() => {
+                          setTempTarget(dummyTarget);
+                          setIsEditingTarget(true);
+                        }}
+                        className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-blue-600 transition-colors"
+                      >
+                        <Edit2 size={10} />
+                      </button>
+                    </div>
+                    
+                    {isEditingTarget ? (
+                      <div className="flex items-center justify-center gap-2 animate-in fade-in zoom-in duration-200">
+                        <input 
+                          type="number"
+                          value={tempTarget}
+                          onChange={(e) => setTempTarget(parseInt(e.target.value) || 0)}
+                          className="w-24 px-2 py-1 text-xs font-bold border rounded bg-gray-50 focus:ring-1 focus:ring-blue-500 outline-none text-center"
+                          autoFocus
+                        />
+                        <button 
+                          onClick={handleSaveTarget}
+                          className="p-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                        >
+                          <Save size={12} />
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-xl font-black text-gray-800">{(dummyTarget / 1000000).toFixed(0)} M</p>
+                    )}
                   </div>
                   <div className="text-center">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Total Actuals For {monthFilter === 'All' ? 'Year' : monthFilter}</p>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Total Actuals For {monthFilter === 'All' ? 'Year' : monthFilter.toUpperCase()}</p>
                     <p className="text-xl font-black text-gray-800">{(totalActuals / 1000000).toFixed(0)} M</p>
                   </div>
                   <div className="text-center">
