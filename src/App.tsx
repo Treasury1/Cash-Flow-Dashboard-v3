@@ -103,35 +103,79 @@ export default function App() {
   const incomingFileInputRef = useRef<HTMLInputElement>(null);
 
   // Bank Account Status State
-  const [bankStatus, setBankStatus] = useState({ current: 56, closed: 42 });
+  const [bankStatusByMonth, setBankStatusByMonth] = useState<Record<string, { current: number, closed: number }>>({
+    'All': { current: 56, closed: 42 },
+    'April': { current: 56, closed: 42 }
+  });
   const [isEditingBank, setIsEditingBank] = useState(false);
   const [tempBankStatus, setTempBankStatus] = useState({ current: 56, closed: 42 });
 
+  const bankStatus = bankStatusByMonth[monthFilter] || { current: 0, closed: 0 };
+
   // GAP Analysis State
-  const [gaps, setGaps] = useState([
-    { id: 'giro', name: 'Giro', amount: 80415428, color: '#8b5cf6', isEditing: false, currency: 'IDR' },
-    { id: 'deposito_idr', name: 'Deposito IDR', amount: 46538100, color: '#ec4899', isEditing: false, currency: 'IDR' },
+  const [gapsByMonth, setGapsByMonth] = useState<Record<string, any[]>>({
+    'All': [
+      { id: 'giro', name: 'Giro', amount: 80415428, color: '#8b5cf6', isEditing: false, currency: 'IDR' },
+      { id: 'deposito_idr', name: 'Deposito IDR', amount: 46538100, color: '#ec4899', isEditing: false, currency: 'IDR' },
+      { id: 'deposito_usd', name: 'Deposito USD', amount: 0, color: '#f59e0b', isEditing: false, currency: 'USD' },
+    ],
+    'April': [
+      { id: 'giro', name: 'Giro', amount: 80415428, color: '#8b5cf6', isEditing: false, currency: 'IDR' },
+      { id: 'deposito_idr', name: 'Deposito IDR', amount: 46538100, color: '#ec4899', isEditing: false, currency: 'IDR' },
+      { id: 'deposito_usd', name: 'Deposito USD', amount: 0, color: '#f59e0b', isEditing: false, currency: 'USD' },
+    ]
+  });
+
+  const gaps = gapsByMonth[monthFilter] || [
+    { id: 'giro', name: 'Giro', amount: 0, color: '#8b5cf6', isEditing: false, currency: 'IDR' },
+    { id: 'deposito_idr', name: 'Deposito IDR', amount: 0, color: '#ec4899', isEditing: false, currency: 'IDR' },
     { id: 'deposito_usd', name: 'Deposito USD', amount: 0, color: '#f59e0b', isEditing: false, currency: 'USD' },
-  ]);
+  ];
 
   // Branch Table State
-  const [branchData, setBranchData] = useState([
+  const [branchDataByMonth, setBranchDataByMonth] = useState<Record<string, any[]>>({
+    'All': [
+      { dept: 'Kantor Pusat', bri: 0, bni: 0, mandiri: 0, others: 0 },
+      { dept: 'xyz', bri: 0, bni: 0, mandiri: 0, others: 0 },
+    ],
+    'April': [
+      { dept: 'Kantor Pusat', bri: 0, bni: 0, mandiri: 0, others: 0 },
+      { dept: 'xyz', bri: 0, bni: 0, mandiri: 0, others: 0 },
+    ]
+  });
+
+  const branchData = branchDataByMonth[monthFilter] || [
     { dept: 'Kantor Pusat', bri: 0, bni: 0, mandiri: 0, others: 0 },
     { dept: 'xyz', bri: 0, bni: 0, mandiri: 0, others: 0 },
-  ]);
+  ];
   const branchFileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSaveBankStatus = () => {
-    setBankStatus(tempBankStatus);
+    setBankStatusByMonth(prev => ({
+      ...prev,
+      [monthFilter]: tempBankStatus
+    }));
     setIsEditingBank(false);
   };
 
   const toggleGapEdit = (id: string) => {
-    setGaps(gaps.map(gap => gap.id === id ? { ...gap, isEditing: !gap.isEditing } : gap));
+    setGapsByMonth(prev => {
+      const currentGaps = prev[monthFilter] || gaps;
+      return {
+        ...prev,
+        [monthFilter]: currentGaps.map(gap => gap.id === id ? { ...gap, isEditing: !gap.isEditing } : gap)
+      };
+    });
   };
 
   const updateGapAmount = (id: string, amount: number) => {
-    setGaps(gaps.map(gap => gap.id === id ? { ...gap, amount } : gap));
+    setGapsByMonth(prev => {
+      const currentGaps = prev[monthFilter] || gaps;
+      return {
+        ...prev,
+        [monthFilter]: currentGaps.map(gap => gap.id === id ? { ...gap, amount } : gap)
+      };
+    });
   };
 
   const handleBranchUpload = (event: ChangeEvent<HTMLInputElement>) => {
@@ -154,7 +198,10 @@ export default function App() {
               mandiri: parseFloat(row['Mandiri'] || 0),
               others: parseFloat(row['Others'] || 0),
             }));
-            setBranchData(newBranchData);
+            setBranchDataByMonth(prev => ({
+              ...prev,
+              [monthFilter]: newBranchData
+            }));
             setUploadSuccess(true);
             setTimeout(() => setUploadSuccess(false), 3000);
           }
@@ -373,7 +420,7 @@ export default function App() {
           const worksheet = workbook.Sheets[firstSheetName];
           const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-          const categories = [
+          const outflowCategories = [
             'PAYMENT AP NON PR PO',
             'PETTYFUND REIMBURSE',
             'PEMBAYARAN LAIN-LAIN',
@@ -387,62 +434,113 @@ export default function App() {
             'INFLOW',
             'CASH IN',
             'PENERIMAAN',
-            'REVENUE'
+            'REVENUE',
+            'SALES TICKETING',
+            'SALES',
+            'TICKETING'
           ];
 
           const newActivities: any[] = [];
           let idCounter = Date.now();
 
           jsonData.forEach((row: any) => {
-            const month = row['Month'] || 'Unknown';
-            const bank = row['Bank'] || 'Others';
+            const month = row['Month'] || row['MONTH'] || 'Unknown';
+            const bank = row['Bank'] || row['BANK'] || 'Others';
             let dateStr = 'Unknown';
             
-            if (row['Date']) {
-              if (row['Date'] instanceof Date) {
-                // Add 12 hours to the date to ensure it stays on the correct day
-                // This prevents "falling back" to the previous day due to timezone offsets
-                const d = new Date(row['Date'].getTime() + (12 * 60 * 60 * 1000));
+            if (row['Date'] || row['DATE']) {
+              const rawDate = row['Date'] || row['DATE'];
+              if (rawDate instanceof Date) {
+                const d = new Date(rawDate.getTime() + (12 * 60 * 60 * 1000));
                 const year = d.getUTCFullYear();
                 const month = String(d.getUTCMonth() + 1).padStart(2, '0');
                 const day = String(d.getUTCDate()).padStart(2, '0');
                 dateStr = `${year}-${month}-${day}`;
               } else {
-                dateStr = row['Date'].toString();
+                dateStr = rawDate.toString();
               }
             }
             
-            // Handle Outflows
-            categories.forEach(cat => {
-              const amount = parseFloat(row[cat]);
-              if (!isNaN(amount) && amount !== 0) {
-                newActivities.push({
-                  id: idCounter++,
-                  date: dateStr,
-                  category: cat,
-                  amount: Math.abs(amount),
-                  type: 'Outflow',
-                  month: month.toString(),
-                  bank: bank.toString()
-                });
+            // 1. Handle Column-based format (Categories as columns)
+            const rowKeys = Object.keys(row);
+            const processedKeys = new Set<string>();
+            let rowActivitiesFound = 0;
+            
+            // Check Outflows
+            outflowCategories.forEach(cat => {
+              // Use exact match or very specific match to avoid overlapping (e.g., "SALES" matching "SALES TICKETING")
+              const matchingKey = rowKeys.find(k => {
+                const upperK = k.toUpperCase();
+                return upperK === cat || upperK === `SUM OF ${cat}` || upperK === `TOTAL ${cat}`;
+              });
+
+              if (matchingKey && !processedKeys.has(matchingKey)) {
+                const amount = parseFloat(row[matchingKey]);
+                if (!isNaN(amount) && amount !== 0) {
+                  newActivities.push({
+                    id: idCounter++,
+                    date: dateStr,
+                    category: cat,
+                    amount: Math.abs(amount),
+                    type: 'Outflow',
+                    month: month.toString(),
+                    bank: bank.toString()
+                  });
+                  processedKeys.add(matchingKey);
+                  rowActivitiesFound++;
+                }
               }
             });
 
-            // Handle Inflows
+            // Check Inflows
             inflowCategories.forEach(cat => {
-              const amount = parseFloat(row[cat]);
-              if (!isNaN(amount) && amount !== 0) {
-                newActivities.push({
-                  id: idCounter++,
-                  date: dateStr,
-                  category: cat,
-                  amount: Math.abs(amount),
-                  type: 'Inflow',
-                  month: month.toString(),
-                  bank: bank.toString()
-                });
+              const matchingKey = rowKeys.find(k => {
+                const upperK = k.toUpperCase();
+                return upperK === cat || upperK === `SUM OF ${cat}` || upperK === `TOTAL ${cat}`;
+              });
+
+              if (matchingKey && !processedKeys.has(matchingKey)) {
+                const amount = parseFloat(row[matchingKey]);
+                if (!isNaN(amount) && amount !== 0) {
+                  newActivities.push({
+                    id: idCounter++,
+                    date: dateStr,
+                    category: cat === 'INFLOW' ? 'Others' : cat,
+                    amount: Math.abs(amount),
+                    type: 'Inflow',
+                    month: month.toString(),
+                    bank: bank.toString()
+                  });
+                  processedKeys.add(matchingKey);
+                  rowActivitiesFound++;
+                }
               }
             });
+
+            // 2. Handle Row-based format (Type, Amount, Category columns)
+            // Only if no column-based activities were found for this row
+            if (rowActivitiesFound === 0) {
+              const typeVal = (row['Type'] || row['TYPE'] || '').toString().toUpperCase();
+              const amountVal = parseFloat(row['Amount'] || row['AMOUNT'] || row['Total'] || row['TOTAL'] || row['Value'] || row['VALUE']);
+              const categoryVal = row['Category'] || row['CATEGORY'] || row['Keterangan'] || row['KETERANGAN'];
+
+              if (typeVal && !isNaN(amountVal) && amountVal !== 0) {
+                const isOutflow = typeVal.includes('OUT') || typeVal.includes('KELUAR') || outflowCategories.some(c => typeVal === c);
+                const isInflow = typeVal.includes('IN') || typeVal.includes('MASUK') || inflowCategories.some(c => typeVal === c);
+
+                if (isInflow || isOutflow) {
+                  newActivities.push({
+                    id: idCounter++,
+                    date: dateStr,
+                    category: categoryVal || (isInflow ? 'Inflow' : 'Outflow'),
+                    amount: Math.abs(amountVal),
+                    type: isInflow ? 'Inflow' : 'Outflow',
+                    month: month.toString(),
+                    bank: bank.toString()
+                  });
+                }
+              }
+            }
           });
 
           if (newActivities.length > 0) {
@@ -960,8 +1058,21 @@ export default function App() {
 
             {/* Data Table */}
             <div className="lg:col-span-6 bg-white p-6 rounded-3xl border border-gray-100 shadow-sm overflow-hidden relative group">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Branch Details</h3>
+            <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-4">
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Branch Details</h3>
+                  {/* Month Filter for Table */}
+                  <div className="relative group">
+                    <select 
+                      value={monthFilter}
+                      onChange={(e) => setMonthFilter(e.target.value)}
+                      className="appearance-none bg-gray-50 border border-gray-100 text-gray-700 text-[10px] font-bold rounded-lg px-3 py-1 pr-8 focus:outline-none focus:ring-1 focus:ring-blue-100 transition-all cursor-pointer"
+                    >
+                      {months.map(m => <option key={m} value={m}>{m === 'All' ? 'All Months' : m}</option>)}
+                    </select>
+                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={10} />
+                  </div>
+                </div>
                 <button 
                   onClick={() => branchFileInputRef.current?.click()}
                   className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-md text-gray-400 hover:text-blue-600 transition-colors border border-gray-100"
@@ -1057,6 +1168,18 @@ export default function App() {
                     <option value="All">All Types</option>
                     <option value="Inflow">Inflow</option>
                     <option value="Outflow">Outflow</option>
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
+                </div>
+
+                {/* Month Filter */}
+                <div className="relative group">
+                  <select 
+                    value={monthFilter}
+                    onChange={(e) => setMonthFilter(e.target.value)}
+                    className="appearance-none bg-gray-50 border border-gray-100 text-gray-700 text-xs font-bold rounded-xl px-4 py-2.5 pr-10 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer"
+                  >
+                    {months.map(m => <option key={m} value={m}>{m === 'All' ? 'All Months' : m}</option>)}
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
                 </div>
