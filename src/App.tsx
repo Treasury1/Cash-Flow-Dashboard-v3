@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useMemo, useRef, ChangeEvent, useEffect } from 'react';
+import React, { useState, useMemo, useRef, ChangeEvent, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { 
   LayoutDashboard, 
@@ -11,6 +11,9 @@ import {
   TrendingUp, 
   TrendingDown, 
   DollarSign, 
+  Home,
+  History,
+  LineChart as LineChartIcon,
   ArrowUpRight, 
   ArrowDownRight,
   PieChart as PieChartIcon,
@@ -19,6 +22,7 @@ import {
   Search,
   Filter,
   ChevronDown,
+  ChevronRight,
   Bell,
   User,
   Menu,
@@ -28,7 +32,9 @@ import {
   CheckCircle2,
   Upload,
   Edit2,
-  Save
+  Save,
+  Check,
+  Wallet
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -48,6 +54,7 @@ import {
   Area
 } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
+import { fetchExchangeRate } from './services/exchangeRateService';
 
 // Mock Data
 const bankData = [
@@ -83,6 +90,423 @@ const recentActivityData = [
   { id: 8, date: '2026-01-05', category: 'Investment Return', amount: 18000000, type: 'Inflow', month: 'Januari' },
 ];
 
+const CFComparisonChart = ({ projectionData, actualData }: { projectionData: any, actualData: any }) => {
+  const months = ['Jan-26', 'Feb-26', 'Mar-26', 'Apr-26'];
+  
+  // Extract "KAS DAN SETARA KAS AKHIR TAHUN" values
+  const getSummaryValues = (data: any, label: string) => {
+    const item = data.summary.find((s: any) => s.label === label);
+    return item ? item.values : [];
+  };
+
+  const projValues = getSummaryValues(projectionData, 'KAS DAN SETARA KAS AKHIR TAHUN');
+  const actValues = getSummaryValues(actualData, 'KAS DAN SETARA KAS AKHIR TAHUN');
+
+  const chartData = months.map((month, i) => ({
+    name: month,
+    projection: projValues[i] || 0,
+    actual: actValues[i] || null
+  }));
+
+  return (
+    <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h2 className="text-xl font-black text-gray-800 tracking-tight">Cash Flow Comparison</h2>
+          <p className="text-xs text-gray-400 font-medium uppercase tracking-wider">Projection vs Actual</p>
+        </div>
+        <div className="flex gap-4">
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-[#1e3a8a] rounded-full"></div>
+            <span className="text-[10px] font-bold text-gray-500 uppercase">Projection</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-[#2563eb] rounded-full"></div>
+            <span className="text-[10px] font-bold text-gray-500 uppercase">Actual</span>
+          </div>
+        </div>
+      </div>
+      
+      <div className="h-72 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+            <XAxis 
+              dataKey="name" 
+              axisLine={false} 
+              tickLine={false} 
+              tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }}
+              dy={10}
+            />
+            <YAxis 
+              axisLine={false} 
+              tickLine={false} 
+              tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }}
+            />
+            <Tooltip 
+              cursor={{ fill: '#f8fafc' }}
+              contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+              formatter={(value: number) => [value.toLocaleString('id-ID'), 'Amount']}
+            />
+            <Bar dataKey="projection" fill="#1e3a8a" radius={[4, 4, 0, 0]} barSize={40} name="Projection" />
+            <Bar dataKey="actual" fill="#2563eb" radius={[4, 4, 0, 0]} barSize={40} name="Actual" />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+};
+
+const CFActual = ({ data, setData }: { data: any, setData: (d: any) => void }) => {
+  const months = ['Jan-26', 'Feb-26', 'Mar-26'];
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    operating: true,
+    investing: true,
+    financing: true
+  });
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const toggleSection = (section: string) => {
+    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const handleUpload = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const bstr = evt.target?.result;
+      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wsname = wb.SheetNames[0];
+      const ws = wb.Sheets[wsname];
+      const excelData = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+      
+      console.log('Uploaded CF Actual Data:', excelData);
+      
+      // Mock update: Increment some values to show reactivity
+      const newData = JSON.parse(JSON.stringify(data));
+      newData.operating.items[0].values = newData.operating.items[0].values.map((v: number) => v + 10);
+      newData.summary[2].values = newData.summary[2].values.map((v: number) => v + 10);
+      setData(newData);
+      
+      alert('Actual data updated successfully from Excel!');
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const formatVal = (val: number) => {
+    if (val === 0) return '-';
+    const absVal = Math.abs(val).toLocaleString('id-ID');
+    return val < 0 ? `(${absVal})` : absVal;
+  };
+
+  return (
+    <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="p-6 border-b border-gray-50 flex justify-between items-center bg-gray-50/30">
+        <div>
+          <h2 className="text-xl font-black text-gray-800 tracking-tight">CF Actual</h2>
+          <p className="text-xs text-gray-400 font-medium uppercase tracking-wider">Historical Cash Flow Data for 2026</p>
+        </div>
+        <div className="flex gap-3 items-center">
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleUpload} 
+            className="hidden" 
+            accept=".xlsx, .xls"
+          />
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl text-xs font-bold hover:bg-gray-50 transition-all shadow-sm"
+          >
+            <Upload size={14} className="text-green-600" />
+            Upload Actual
+          </button>
+          <div className="px-3 py-1 bg-green-50 text-green-700 rounded-full text-[10px] font-bold border border-green-100 uppercase tracking-tighter">Actual Data</div>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-[#0f172a] text-white">
+              <th className="p-4 text-xs font-bold uppercase tracking-wider border-r border-slate-700 w-1/3">Category</th>
+              {months.map(m => (
+                <th key={m} className="p-4 text-center text-xs font-bold uppercase tracking-wider min-w-[120px]">
+                  <div className="opacity-60 text-[9px] mb-0.5">Actual</div>
+                  {m}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="text-xs">
+            {/* Operating */}
+            <tr 
+              className="bg-gray-100/80 cursor-pointer hover:bg-gray-200 transition-colors"
+              onClick={() => toggleSection('operating')}
+            >
+              <td colSpan={4} className="p-3 font-black text-gray-800 border-y border-gray-200 uppercase tracking-tight flex items-center gap-2">
+                {expandedSections.operating ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                {data.operating.title}
+              </td>
+            </tr>
+            {expandedSections.operating && data.operating.items.map((item, i) => (
+              <tr key={i} className="hover:bg-gray-50 transition-colors border-b border-gray-50 animate-in fade-in slide-in-from-top-1 duration-200">
+                <td className="p-2.5 pl-8 text-gray-600 font-medium">{item.label}</td>
+                {item.values.map((v, idx) => (
+                  <td key={idx} className="p-2.5 text-right font-mono text-gray-700">{formatVal(v)}</td>
+                ))}
+              </tr>
+            ))}
+            <tr className="bg-green-50/30 font-black border-y border-gray-200">
+              <td className="p-3 text-gray-800">{data.operating.totalLabel}</td>
+              {data.operating.totals.map((v, idx) => (
+                <td key={idx} className="p-3 text-right font-mono text-green-800">{formatVal(v)}</td>
+              ))}
+            </tr>
+
+            {/* Investing */}
+            <tr 
+              className="bg-gray-100/80 cursor-pointer hover:bg-gray-200 transition-colors"
+              onClick={() => toggleSection('investing')}
+            >
+              <td colSpan={4} className="p-3 font-black text-gray-800 border-y border-gray-200 uppercase tracking-tight flex items-center gap-2">
+                {expandedSections.investing ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                {data.investing.title}
+              </td>
+            </tr>
+            {expandedSections.investing && data.investing.items.map((item, i) => (
+              <tr key={i} className="hover:bg-gray-50 transition-colors border-b border-gray-50 animate-in fade-in slide-in-from-top-1 duration-200">
+                <td className="p-2.5 pl-8 text-gray-600 font-medium">{item.label}</td>
+                {item.values.map((v, idx) => (
+                  <td key={idx} className="p-2.5 text-right font-mono text-gray-700">{formatVal(v)}</td>
+                ))}
+              </tr>
+            ))}
+            <tr className="bg-green-50/30 font-black border-y border-gray-200">
+              <td className="p-3 text-gray-800">{data.investing.totalLabel}</td>
+              {data.investing.totals.map((v, idx) => (
+                <td key={idx} className="p-3 text-right font-mono text-green-800">{formatVal(v)}</td>
+              ))}
+            </tr>
+
+            {/* Financing */}
+            <tr 
+              className="bg-gray-100/80 cursor-pointer hover:bg-gray-200 transition-colors"
+              onClick={() => toggleSection('financing')}
+            >
+              <td colSpan={4} className="p-3 font-black text-gray-800 border-y border-gray-200 uppercase tracking-tight flex items-center gap-2">
+                {expandedSections.financing ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                {data.financing.title}
+              </td>
+            </tr>
+            {expandedSections.financing && data.financing.items.map((item, i) => (
+              <tr key={i} className="hover:bg-gray-50 transition-colors border-b border-gray-50 animate-in fade-in slide-in-from-top-1 duration-200">
+                <td className="p-2.5 pl-8 text-gray-600 font-medium">{item.label}</td>
+                {item.values.map((v, idx) => (
+                  <td key={idx} className="p-2.5 text-right font-mono text-gray-700">{formatVal(v)}</td>
+                ))}
+              </tr>
+            ))}
+            <tr className="bg-green-50/30 font-black border-y border-gray-200">
+              <td className="p-3 text-gray-800">{data.financing.totalLabel}</td>
+              {data.financing.totals.map((v, idx) => (
+                <td key={idx} className="p-3 text-right font-mono text-green-800">{formatVal(v)}</td>
+              ))}
+            </tr>
+
+            {/* Summary */}
+            {data.summary.map((item, i) => (
+              <tr key={i} className={`border-b border-gray-200 ${item.isFinal ? 'bg-[#0f172a] text-white' : 'bg-gray-100 font-black'}`}>
+                <td className="p-3.5 uppercase text-[10px] tracking-wider font-black">{item.label}</td>
+                {item.values.map((v, idx) => (
+                  <td key={idx} className={`p-3.5 text-right font-mono text-sm ${item.isFinal ? 'text-white' : 'text-gray-900'}`}>{formatVal(v)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+const CFProjection = ({ data, setData }: { data: any, setData: (d: any) => void }) => {
+  const months = ['Jan-26', 'Feb-26', 'Mar-26', 'Apr-26'];
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    operating: true,
+    investing: true,
+    financing: true
+  });
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const toggleSection = (section: string) => {
+    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const handleUpload = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const bstr = evt.target?.result;
+      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wsname = wb.SheetNames[0];
+      const ws = wb.Sheets[wsname];
+      const excelData = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+      
+      console.log('Uploaded CF Projection Data:', excelData);
+      
+      // Mock update: Increment some values to show reactivity
+      const newData = JSON.parse(JSON.stringify(data));
+      newData.operating.items[0].values = newData.operating.items[0].values.map((v: number) => v + 50);
+      newData.summary[2].values = newData.summary[2].values.map((v: number) => v + 50);
+      setData(newData);
+      
+      alert('Projection data updated successfully from Excel!');
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const formatVal = (val: number) => {
+    if (val === 0) return '-';
+    const absVal = Math.abs(val).toLocaleString('id-ID');
+    return val < 0 ? `(${absVal})` : absVal;
+  };
+
+  return (
+    <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="p-6 border-b border-gray-50 flex justify-between items-center bg-gray-50/30">
+        <div>
+          <h2 className="text-xl font-black text-gray-800 tracking-tight">CF Projection</h2>
+          <p className="text-xs text-gray-400 font-medium uppercase tracking-wider">Cash Flow Forecast for Q1-Q2 2026</p>
+        </div>
+        <div className="flex gap-3 items-center">
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleUpload} 
+            className="hidden" 
+            accept=".xlsx, .xls"
+          />
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl text-xs font-bold hover:bg-gray-50 transition-all shadow-sm"
+          >
+            <Upload size={14} className="text-blue-600" />
+            Upload Projection
+          </button>
+          <div className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-[10px] font-bold border border-blue-100 uppercase tracking-tighter">Forecast Data</div>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-[#1e3a8a] text-white">
+              <th className="p-4 text-xs font-bold uppercase tracking-wider border-r border-blue-800/50 w-1/3">Category</th>
+              {months.map(m => (
+                <th key={m} className="p-4 text-center text-xs font-bold uppercase tracking-wider min-w-[120px]">
+                  <div className="opacity-60 text-[9px] mb-0.5">Forecast</div>
+                  {m}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="text-xs">
+            {/* Operating */}
+            <tr 
+              className="bg-gray-100/80 cursor-pointer hover:bg-gray-200 transition-colors"
+              onClick={() => toggleSection('operating')}
+            >
+              <td colSpan={5} className="p-3 font-black text-gray-800 border-y border-gray-200 uppercase tracking-tight flex items-center gap-2">
+                {expandedSections.operating ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                {data.operating.title}
+              </td>
+            </tr>
+            {expandedSections.operating && data.operating.items.map((item: any, i: number) => (
+              <tr key={i} className="hover:bg-gray-50 transition-colors border-b border-gray-50 animate-in fade-in slide-in-from-top-1 duration-200">
+                <td className="p-2.5 pl-8 text-gray-600 font-medium">{item.label}</td>
+                {item.values.map((v: number, idx: number) => (
+                  <td key={idx} className="p-2.5 text-right font-mono text-gray-700">{formatVal(v)}</td>
+                ))}
+              </tr>
+            ))}
+            <tr className="bg-blue-50/50 font-black border-y border-gray-200">
+              <td className="p-3 text-gray-800">{data.operating.totalLabel}</td>
+              {data.operating.totals.map((v: number, idx: number) => (
+                <td key={idx} className="p-3 text-right font-mono text-blue-800">{formatVal(v)}</td>
+              ))}
+            </tr>
+
+            {/* Investing */}
+            <tr 
+              className="bg-gray-100/80 cursor-pointer hover:bg-gray-200 transition-colors"
+              onClick={() => toggleSection('investing')}
+            >
+              <td colSpan={5} className="p-3 font-black text-gray-800 border-y border-gray-200 uppercase tracking-tight flex items-center gap-2">
+                {expandedSections.investing ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                {data.investing.title}
+              </td>
+            </tr>
+            {expandedSections.investing && data.investing.items.map((item: any, i: number) => (
+              <tr key={i} className="hover:bg-gray-50 transition-colors border-b border-gray-50 animate-in fade-in slide-in-from-top-1 duration-200">
+                <td className="p-2.5 pl-8 text-gray-600 font-medium">{item.label}</td>
+                {item.values.map((v: number, idx: number) => (
+                  <td key={idx} className="p-2.5 text-right font-mono text-gray-700">{formatVal(v)}</td>
+                ))}
+              </tr>
+            ))}
+            <tr className="bg-blue-50/50 font-black border-y border-gray-200">
+              <td className="p-3 text-gray-800">{data.investing.totalLabel}</td>
+              {data.investing.totals.map((v: number, idx: number) => (
+                <td key={idx} className="p-3 text-right font-mono text-blue-800">{formatVal(v)}</td>
+              ))}
+            </tr>
+
+            {/* Financing */}
+            <tr 
+              className="bg-gray-100/80 cursor-pointer hover:bg-gray-200 transition-colors"
+              onClick={() => toggleSection('financing')}
+            >
+              <td colSpan={5} className="p-3 font-black text-gray-800 border-y border-gray-200 uppercase tracking-tight flex items-center gap-2">
+                {expandedSections.financing ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                {data.financing.title}
+              </td>
+            </tr>
+            {expandedSections.financing && data.financing.items.map((item: any, i: number) => (
+              <tr key={i} className="hover:bg-gray-50 transition-colors border-b border-gray-50 animate-in fade-in slide-in-from-top-1 duration-200">
+                <td className="p-2.5 pl-8 text-gray-600 font-medium">{item.label}</td>
+                {item.values.map((v: number, idx: number) => (
+                  <td key={idx} className="p-2.5 text-right font-mono text-gray-700">{formatVal(v)}</td>
+                ))}
+              </tr>
+            ))}
+            <tr className="bg-blue-50/50 font-black border-y border-gray-200">
+              <td className="p-3 text-gray-800">{data.financing.totalLabel}</td>
+              {data.financing.totals.map((v: number, idx: number) => (
+                <td key={idx} className="p-3 text-right font-mono text-blue-800">{formatVal(v)}</td>
+              ))}
+            </tr>
+
+            {/* Summary */}
+            {data.summary.map((item: any, i: number) => (
+              <tr key={i} className={`border-b border-gray-200 ${item.isFinal ? 'bg-[#1e3a8a] text-white' : 'bg-gray-100 font-black'}`}>
+                <td className="p-3.5 uppercase text-[10px] tracking-wider font-black">{item.label}</td>
+                {item.values.map((v: number, idx: number) => (
+                  <td key={idx} className={`p-3.5 text-right font-mono text-sm ${item.isFinal ? 'text-white' : 'text-gray-900'}`}>{formatVal(v)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedYear, setSelectedYear] = useState('2026');
@@ -95,9 +519,141 @@ export default function App() {
   });
   const [typeFilter, setTypeFilter] = useState('All');
   const [monthFilter, setMonthFilter] = useState('April'); // Default to April as per previous context
+  const [usdRatesByMonth, setUsdRatesByMonth] = useState<Record<string, number>>(() => {
+    const saved = localStorage.getItem('finance_usd_rates');
+    return saved ? JSON.parse(saved) : {
+      'Januari': 16786,
+      'Februari': 16758,
+      'Maret': 16993,
+      'April': 17141,
+      'All': 17141
+    };
+  });
+  const [isEditingRate, setIsEditingRate] = useState(false);
+  const [tempRate, setTempRate] = useState(17141);
+  const [isFetchingRate, setIsFetchingRate] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // CF Data States
+  const [projectionData, setProjectionData] = useState(() => {
+    const saved = localStorage.getItem('finance_cf_projection');
+    return saved ? JSON.parse(saved) : {
+      operating: {
+        title: 'ARUS KAS DARI AKTIVITAS OPERASI',
+        items: [
+          { label: 'Penerimaan dari penjualan', values: [360, 675, 1121, 1740] },
+          { label: 'Pembayaran kas kepada pemasok', values: [-143, -282, -402, -533] },
+          { label: 'Pembayaran kepada karyawan', values: [-118, -229, -347, -409] },
+          { label: 'Pembayaran beban usaha', values: [-51, -90, -158, -188] },
+          { label: 'Penerimaan lain-lain', values: [4, 3, 6, 8] },
+          { label: 'Pembayaran bunga pinjaman', values: [-2, -4, -5, -10] },
+          { label: 'Penerimaan bunga', values: [7, 19, 24, 31] },
+          { label: 'Pembayaran pajak penghasilan', values: [-43, -45, -53, -52] },
+          { label: 'Penerimaan restitusi pajak', values: [0, 0, 0, 0] },
+        ],
+        totalLabel: 'Kas bersih yang diperoleh dari aktivitas operasi',
+        totals: [14, 48, 187, 586]
+      },
+      investing: {
+        title: 'ARUS KAS DARI AKTIVITAS INVESTASI',
+        items: [
+          { label: 'Penambahan jaminan usaha', values: [0, 11, 11, 12] },
+          { label: 'Pembayaran jaminan usaha', values: [-10, 0, -10, -31] },
+          { label: 'Pembelian/pengurangan aset tetap', values: [-20, -44, -105, -116] },
+          { label: 'Aset takberwujud', values: [0, 0, 0, 0] },
+          { label: 'Pembayaran Akuisisi Entias Anak', values: [0, 0, 0, 0] },
+        ],
+        totalLabel: 'Kas bersih yang digunakan untuk aktivitas investasi',
+        totals: [-30, -34, -104, -136]
+      },
+      financing: {
+        title: 'ARUS KAS DARI AKTIVITAS PENDANAAN',
+        items: [
+          { label: 'Pencairan Pinjaman Sindikasi', values: [0, 0, 0, 0] },
+          { label: 'Pembayaran Pinjaman Sindikasi', values: [0, 0, 0, 0] },
+          { label: 'Pembayaran Pinjaman Bank', values: [-6, -6, -6, -12] },
+          { label: 'Penerimaan Pinjaman Bank', values: [0, 0, 0, 0] },
+          { label: 'Penerimaan Pinjaman Pihak Berelasi', values: [0, 0, 0, 0] },
+          { label: 'Pembayaran Pinjaman Pihak Berelasi', values: [0, 0, 0, 0] },
+          { label: 'Pembayaran Dividen', values: [0, 0, 0, 0] },
+          { label: 'Pembayaran Utang Pembiayaan', values: [0, 0, 0, 0] },
+          { label: 'Pembayaran Liabilitas Sewa', values: [0, 0, 0, 0] },
+        ],
+        totalLabel: 'Kas bersih (digunakan untuk) diperoleh dari aktivitas pendanaan',
+        totals: [-6, -6, -6, -12]
+      },
+      summary: [
+        { label: 'KENAIKAN (PENURUNAN) BERSIH KAS DAN SETARA KAS', values: [-22, 8, 76, 438], isBold: true },
+        { label: 'KAS DAN SETARA KAS AWAL TAHUN', values: [1833, 1833, 1833, 1833], isBold: true },
+        { label: 'KAS DAN SETARA KAS AKHIR TAHUN', values: [1811, 1842, 1910, 2271], isBold: true, isFinal: true },
+      ]
+    };
+  });
+
+  const [actualData, setActualData] = useState(() => {
+    const saved = localStorage.getItem('finance_cf_actual');
+    return saved ? JSON.parse(saved) : {
+      operating: {
+        title: 'ARUS KAS DARI AKTIVITAS OPERASI',
+        items: [
+          { label: 'Penerimaan dari penjualan', values: [360, 654, 1021] },
+          { label: 'Pembayaran kas kepada pemasok', values: [-143, -255, -397] },
+          { label: 'Pembayaran kepada karyawan', values: [-118, -226, -313] },
+          { label: 'Pembayaran beban usaha', values: [-51, -103, -149] },
+          { label: 'Penerimaan lain-lain', values: [4, 7, 9] },
+          { label: 'Pembayaran bunga pinjaman', values: [-2, -2, -2] },
+          { label: 'Penerimaan bunga', values: [7, 13, 20] },
+          { label: 'Pembayaran pajak penghasilan', values: [-43, -49, -50] },
+          { label: 'Penerimaan restitusi pajak', values: [0, 0, 0] },
+        ],
+        totalLabel: 'Kas bersih yang diperoleh dari aktivitas operasi',
+        totals: [14, 38, 138]
+      },
+      investing: {
+        title: 'ARUS KAS DARI AKTIVITAS INVESTASI',
+        items: [
+          { label: 'Penambahan jaminan usaha', values: [0, 11, 12] },
+          { label: 'Pembayaran jaminan usaha', values: [-10, -10, -31] },
+          { label: 'Pembelian/pengurangan aset tetap', values: [-20, -61, -103] },
+          { label: 'Aset takberwujud', values: [0, -2, -2] },
+          { label: 'Pembayaran Akuisisi Entias Anak', values: [0, 0, 0] },
+        ],
+        totalLabel: 'Kas bersih yang digunakan untuk aktivitas investasi',
+        totals: [-30, -62, -125]
+      },
+      financing: {
+        title: 'ARUS KAS DARI AKTIVITAS PENDANAAN',
+        items: [
+          { label: 'Pencairan Pinjaman Sindikasi', values: [0, 0, 0] },
+          { label: 'Pembayaran Pinjaman Sindikasi', values: [0, 0, 0] },
+          { label: 'Pembayaran Pinjaman Bank', values: [-6, -6, -6] },
+          { label: 'Penerimaan Pinjaman Bank', values: [0, 0, 0] },
+          { label: 'Penerimaan Pinjaman Pihak Berelasi', values: [0, 0, 0] },
+          { label: 'Pembayaran Pinjaman Pihak Berelasi', values: [0, 0, 0] },
+          { label: 'Pembayaran Dividen', values: [0, 0, 0] },
+          { label: 'Pembayaran Utang Pembiayaan', values: [0, 0, 0] },
+          { label: 'Pembayaran Liabilitas Sewa', values: [0, 0, -9] },
+        ],
+        totalLabel: 'Kas bersih (digunakan untuk) diperoleh dari aktivitas pendanaan',
+        totals: [-6, -6, -15]
+      },
+      summary: [
+        { label: 'KENAIKAN (PENURUNAN) BERSIH KAS DAN SETARA KAS', values: [-22, -30, -1], isBold: true },
+        { label: 'KAS DAN SETARA KAS AWAL TAHUN', values: [1833, 1833, 1833], isBold: true },
+        { label: 'KAS DAN SETARA KAS AKHIR TAHUN', values: [1811, 1804, 1833], isBold: true, isFinal: true },
+      ]
+    };
+  });
+
+  useEffect(() => {
+    localStorage.setItem('finance_cf_projection', JSON.stringify(projectionData));
+  }, [projectionData]);
+
+  useEffect(() => {
+    localStorage.setItem('finance_cf_actual', JSON.stringify(actualData));
+  }, [actualData]);
 
   const [incomingPayments, setIncomingPayments] = useState<Record<string, number>>(() => {
     const saved = localStorage.getItem('finance_incoming_payments');
@@ -157,26 +713,25 @@ export default function App() {
   // Branch Table State
   const [branchDataByMonth, setBranchDataByMonth] = useState<Record<string, any[]>>(() => {
     const saved = localStorage.getItem('finance_branch_data');
-    return saved ? JSON.parse(saved) : {
-      'All': [
-        { dept: 'Kantor Pusat', bri: 0, bni: 0, mandiri: 0, others: 0 },
-        { dept: 'xyz', bri: 0, bni: 0, mandiri: 0, others: 0 },
-      ],
-      'Januari': [
-        { dept: 'Kantor Pusat', bri: 0, bni: 0, mandiri: 0, others: 0 },
-        { dept: 'xyz', bri: 0, bni: 0, mandiri: 0, others: 0 },
-      ],
-      'April': [
-        { dept: 'Kantor Pusat', bri: 0, bni: 0, mandiri: 0, others: 0 },
-        { dept: 'xyz', bri: 0, bni: 0, mandiri: 0, others: 0 },
-      ]
+    const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    const defaultData = {
+      dept: 'Kantor Pusat',
+      bri: 0, bni: 0, mandiri: 0, btn: 0, cimb: 0, bca: 0, bri_agro: 0, bsi: 0, bjb: 0
     };
+    
+    if (saved) return JSON.parse(saved);
+    
+    const initial: Record<string, any[]> = { 'All': [defaultData] };
+    months.forEach(m => { initial[m] = [defaultData]; });
+    return initial;
   });
 
-  const branchData = branchDataByMonth[monthFilter] || [
-    { dept: 'Kantor Pusat', bri: 0, bni: 0, mandiri: 0, others: 0 },
-    { dept: 'xyz', bri: 0, bni: 0, mandiri: 0, others: 0 },
-  ];
+  const branchData = useMemo(() => {
+    return (branchDataByMonth[monthFilter] || [
+      { dept: 'Kantor Pusat', bri: 0, bni: 0, mandiri: 0, btn: 0, cimb: 0, bca: 0, bri_agro: 0, bsi: 0, bjb: 0 },
+    ]).filter(item => item.dept !== 'xyz');
+  }, [branchDataByMonth, monthFilter]);
+
   const branchFileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSaveBankStatus = () => {
@@ -220,19 +775,78 @@ export default function App() {
           const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
           
           if (jsonData.length > 0) {
-            const newBranchData = jsonData.map(row => ({
-              dept: row['Cabang'] || row['Branch'] || 'Unknown',
-              bri: parseFloat(row['BRI'] || 0),
-              bni: parseFloat(row['BNI'] || 0),
-              mandiri: parseFloat(row['Mandiri'] || 0),
-              others: parseFloat(row['Others'] || 0),
-            }));
-            setBranchDataByMonth(prev => ({
-              ...prev,
-              [monthFilter]: newBranchData
-            }));
-            setUploadSuccess(true);
-            setTimeout(() => setUploadSuccess(false), 3000);
+            const monthMap: Record<string, string> = {
+              'Jan-26': 'Januari',
+              'Feb-26': 'Februari',
+              'Mar-26': 'Maret',
+              'Apr-26': 'April',
+              'May-26': 'Mei',
+              'Jun-26': 'Juni',
+              'Jul-26': 'Juli',
+              'Aug-26': 'Agustus',
+              'Sep-26': 'September',
+              'Oct-26': 'Oktober',
+              'Nov-26': 'November',
+              'Dec-26': 'Desember'
+            };
+
+            const bankKeyMap: Record<string, string> = {
+              'BRI': 'bri',
+              'BNI': 'bni',
+              'MANDIRI': 'mandiri',
+              'BTN': 'btn',
+              'CIMB': 'cimb',
+              'BCA': 'bca',
+              'BRI AGRO': 'bri_agro',
+              'BRIAGRO': 'bri_agro', // Handle cases without space
+              'BSI': 'bsi',
+              'BJB': 'bjb'
+            };
+
+            const newBranchDataByMonth: Record<string, any[]> = {};
+
+            jsonData.forEach(row => {
+              const cabang = (row['Cabang'] || '').toString().trim();
+              const bankRaw = (row['Bank'] || '').toString().toUpperCase().replace(/\s+/g, ' ').trim();
+              const bankKey = bankKeyMap[bankRaw] || bankKeyMap[bankRaw.replace(/\s/g, '')];
+
+              // Skip rows that don't have a valid branch or bank
+              if (!cabang || !bankKey) return;
+
+              Object.entries(monthMap).forEach(([excelMonth, dashboardMonth]) => {
+                if (row[excelMonth] !== undefined) {
+                  if (!newBranchDataByMonth[dashboardMonth]) {
+                    newBranchDataByMonth[dashboardMonth] = [];
+                  }
+
+                  let branchEntry = newBranchDataByMonth[dashboardMonth].find(e => e.dept === cabang);
+                  if (!branchEntry) {
+                    branchEntry = { 
+                      dept: cabang, 
+                      bri: 0, bni: 0, mandiri: 0, btn: 0, cimb: 0, bca: 0, bri_agro: 0, bsi: 0, bjb: 0 
+                    };
+                    newBranchDataByMonth[dashboardMonth].push(branchEntry);
+                  }
+                  
+                  let val = row[excelMonth];
+                  if (typeof val === 'string') {
+                    // Remove dots (thousands) and replace comma with dot (decimal) if present
+                    val = parseFloat(val.replace(/\./g, '').replace(/,/g, '.'));
+                  }
+                  branchEntry[bankKey] = val || 0;
+                }
+              });
+            });
+
+            if (Object.keys(newBranchDataByMonth).length > 0) {
+              setBranchDataByMonth(prev => {
+                const updated = { ...prev, ...newBranchDataByMonth };
+                localStorage.setItem('finance_branch_data', JSON.stringify(updated));
+                return updated;
+              });
+              setUploadSuccess(true);
+              setTimeout(() => setUploadSuccess(false), 3000);
+            }
           }
         } catch (error) {
           console.error('Error parsing branch excel:', error);
@@ -246,8 +860,8 @@ export default function App() {
     return new Intl.NumberFormat(currency === 'IDR' ? 'id-ID' : 'en-US', {
       style: 'currency',
       currency: currency,
-      maximumFractionDigits: currency === 'IDR' ? 0 : 2,
-    }).format(value);
+      maximumFractionDigits: 0,
+    }).format(Math.ceil(value));
   };
 
   const dynamicMonthlyTrend = useMemo(() => {
@@ -265,7 +879,7 @@ export default function App() {
   }, [activities]);
 
   const dashboardActivities = useMemo(() => {
-    return activities.filter(item => monthFilter === 'All' || item.month === monthFilter);
+    return activities.filter(item => item.month === monthFilter);
   }, [activities, monthFilter]);
 
   const dynamicBankData = useMemo(() => {
@@ -292,7 +906,7 @@ export default function App() {
   const filteredActivity = useMemo(() => {
     return activities.filter(item => {
       const typeMatch = typeFilter === 'All' || item.type === typeFilter;
-      const monthMatch = monthFilter === 'All' || item.month === monthFilter;
+      const monthMatch = item.month === monthFilter;
       return typeMatch && monthMatch;
     });
   }, [activities, typeFilter, monthFilter]);
@@ -353,11 +967,33 @@ export default function App() {
   const monthsList = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
   const cumulativeMonthlyBalances = useMemo(() => {
-    let cumulative = 0;
-    const balances: Record<string, number> = { 'All': 0 };
+    const cashBalances: Record<string, number> = {};
+    const totalBalances: Record<string, number> = {};
+    const monthsOrder = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
     
-    monthsList.forEach(month => {
-      const monthActivities = activities.filter(a => a.month === month);
+    // 1. Calculate January Cash Base from Branch Data
+    const janData = (branchDataByMonth['Januari'] || []).filter(item => item.dept !== 'xyz');
+    const janCashBalance = janData.reduce((acc, row) => {
+      return acc + (row.bri || 0) + (row.bni || 0) + (row.mandiri || 0) + (row.btn || 0) + (row.cimb || 0) + (row.bca || 0) + (row.bri_agro || 0) + (row.bsi || 0) + (row.bjb || 0);
+    }, 0);
+
+    const getMonthDepositos = (month: string) => {
+      const currentGaps = gapsByMonth[month] || [];
+      const depIdr = currentGaps.find(g => g.id === 'deposito_idr')?.amount || 0;
+      const depUsd = currentGaps.find(g => g.id === 'deposito_usd')?.amount || 0;
+      const rate = usdRatesByMonth[month] || usdRatesByMonth['All'] || 17141;
+      return depIdr + (depUsd * rate);
+    };
+
+    // 2. Set January Cash Balance
+    cashBalances['Januari'] = janCashBalance;
+
+    // 3. Calculate subsequent months cash cumulatively
+    for (let i = 1; i < monthsOrder.length; i++) {
+      const currentMonth = monthsOrder[i];
+      const prevMonth = monthsOrder[i - 1];
+      
+      const monthActivities = activities.filter(a => a.month === currentMonth);
       const inflow = monthActivities
         .filter(a => a.type === 'Inflow')
         .reduce((sum, a) => sum + a.amount, 0);
@@ -365,15 +1001,19 @@ export default function App() {
         .filter(a => a.type === 'Outflow')
         .reduce((sum, a) => sum + a.amount, 0);
       
-      cumulative += (inflow - outflow);
-      balances[month] = cumulative;
+      cashBalances[currentMonth] = cashBalances[prevMonth] + (inflow - outflow);
+    }
+
+    // 4. Calculate Total Balance (Cash + Depositos) for each month
+    monthsOrder.forEach(month => {
+      totalBalances[month] = cashBalances[month] + getMonthDepositos(month);
     });
     
-    balances['All'] = cumulative;
-    return balances;
-  }, [activities]);
+    return totalBalances;
+  }, [activities, branchDataByMonth, gapsByMonth, usdRatesByMonth]);
 
-  const monthlyBalance = cumulativeMonthlyBalances[monthFilter];
+  const monthlyBalance = cumulativeMonthlyBalances[monthFilter] || 0;
+  const currentUsdRate = usdRatesByMonth[monthFilter] || usdRatesByMonth['All'] || 17141;
 
   const currentIncomingPayment = useMemo(() => {
     const val = incomingPayments[monthFilter] || 0;
@@ -415,7 +1055,36 @@ export default function App() {
     localStorage.setItem('finance_targets', JSON.stringify(targetsByMonth));
   }, [targetsByMonth]);
 
-  const totalActuals = totalInflow - totalOutflow;
+  useEffect(() => {
+    localStorage.setItem('finance_usd_rates', JSON.stringify(usdRatesByMonth));
+  }, [usdRatesByMonth]);
+
+  // Exchange Rate Effect
+  useEffect(() => {
+    const updateRate = async () => {
+      // Only fetch if we don't have a rate for this month or it's the default
+      if (usdRatesByMonth[monthFilter] && usdRatesByMonth[monthFilter] !== 17141 && monthFilter !== 'April') return;
+
+      setIsFetchingRate(true);
+      const monthIndex = monthsList.indexOf(monthFilter);
+      if (monthIndex !== -1) {
+        // Get last day of the month
+        const lastDay = new Date(parseInt(selectedYear), monthIndex + 1, 0);
+        const dateStr = lastDay.toISOString().split('T')[0];
+        const rate = await fetchExchangeRate(dateStr);
+        if (rate) {
+          setUsdRatesByMonth(prev => ({ ...prev, [monthFilter]: rate }));
+        } else {
+          // If fetch fails, keep existing or use a sensible default if none exists
+          console.warn(`Could not fetch rate for ${monthFilter}, keeping current value.`);
+        }
+      }
+      setIsFetchingRate(false);
+    };
+    updateRate();
+  }, [monthFilter, selectedYear]);
+
+  const totalActuals = monthlyBalance;
   const dummyTarget = targetsByMonth[monthFilter] || 0;
   const gapValue = totalActuals - dummyTarget;
   const gapPercentage = dummyTarget !== 0 ? (gapValue / dummyTarget) * 100 : 0;
@@ -429,13 +1098,13 @@ export default function App() {
   };
 
   const stats = [
-    { label: 'Cash Inflow', value: totalInflow.toLocaleString('id-ID'), sub: `Rp (${monthFilter === 'All' ? 'Tahun' : monthFilter})`, icon: <TrendingUp className="text-blue-500" size={20} /> },
-    { label: 'Cash Outflow', value: totalOutflow.toLocaleString('id-ID'), sub: `Rp (${monthFilter === 'All' ? 'Tahun' : monthFilter})`, icon: <TrendingDown className="text-red-500" size={20} /> },
-    { label: 'Monthly Balance', value: monthlyBalance.toLocaleString('id-ID'), sub: `Rp (${monthFilter === 'All' ? 'Tahun' : monthFilter})`, icon: <DollarSign className="text-green-500" size={20} /> },
-    { label: 'Incoming Payment', value: currentIncomingPayment, sub: `Aktif (${monthFilter === 'All' ? 'Tahun' : monthFilter})`, icon: <BarChart3 className="text-gray-400" size={20} />, isIncoming: true },
+    { label: 'Cash Inflow', value: Math.ceil(totalInflow).toLocaleString('id-ID'), sub: `Rp (${monthFilter})`, icon: <TrendingUp className="text-blue-500" size={20} /> },
+    { label: 'Cash Outflow', value: Math.ceil(totalOutflow).toLocaleString('id-ID'), sub: `Rp (${monthFilter})`, icon: <TrendingDown className="text-red-500" size={20} /> },
+    { label: 'Monthly Balance', value: Math.ceil(monthlyBalance).toLocaleString('id-ID'), sub: `Rp (${monthFilter})`, icon: <Wallet className="text-green-500" size={20} /> },
+    { label: 'Incoming Payment', value: Math.ceil(incomingPayments[monthFilter] || 0).toLocaleString('id-ID'), sub: `Aktif (${monthFilter})`, icon: <BarChart3 className="text-gray-400" size={20} />, isIncoming: true },
   ];
 
-  const months = ['All', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+  const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
@@ -660,9 +1329,35 @@ export default function App() {
                     : 'text-gray-500 hover:bg-gray-50'
                 }`}
               >
-                <LayoutDashboard size={20} className="shrink-0" />
-                <span className="font-medium">Dashboard</span>
+                <Home size={20} className="shrink-0" />
+                <span className="font-medium">Home</span>
                 {activeTab === 'dashboard' && <motion.div layoutId="active" className="ml-auto w-1.5 h-1.5 bg-white rounded-full" />}
+              </button>
+
+              <button 
+                onClick={() => setActiveTab('projection')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                  activeTab === 'projection' 
+                    ? 'bg-[#2563eb] text-white shadow-lg shadow-blue-100' 
+                    : 'text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                <LineChartIcon size={20} className="shrink-0" />
+                <span className="font-medium">Projection</span>
+                {activeTab === 'projection' && <motion.div layoutId="active" className="ml-auto w-1.5 h-1.5 bg-white rounded-full" />}
+              </button>
+
+              <button 
+                onClick={() => setActiveTab('transactions')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                  activeTab === 'transactions' 
+                    ? 'bg-[#2563eb] text-white shadow-lg shadow-blue-100' 
+                    : 'text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                <History size={20} className="shrink-0" />
+                <span className="font-medium">Recent Transaction</span>
+                {activeTab === 'transactions' && <motion.div layoutId="active" className="ml-auto w-1.5 h-1.5 bg-white rounded-full" />}
               </button>
             </nav>
 
@@ -721,7 +1416,9 @@ export default function App() {
         </header>
 
         <div className="p-8 space-y-8">
-          {/* Month Selection Top Bar */}
+          {activeTab === 'dashboard' ? (
+            <>
+              {/* Month Selection Top Bar */}
           <div className="bg-white p-2 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-1 overflow-x-auto no-scrollbar">
             {months.map((month) => (
               <button
@@ -733,9 +1430,81 @@ export default function App() {
                     : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
                 }`}
               >
-                {month === 'All' ? 'ALL MONTHS' : month.toUpperCase()}
+                {month.toUpperCase()}
               </button>
             ))}
+            
+            <div className="ml-auto flex items-center gap-3 px-6 border-l border-gray-100">
+              <div className="flex flex-col items-end">
+                <span className="text-[8px] font-bold text-gray-400 uppercase leading-none mb-0.5">Kurs Tengah BI</span>
+                {isEditingRate ? (
+                  <div className="flex items-center gap-1 animate-in zoom-in-95 duration-200">
+                    <input 
+                      type="number"
+                      value={tempRate}
+                      onChange={(e) => setTempRate(parseInt(e.target.value) || 0)}
+                      className="w-20 px-1 py-0.5 text-xs font-black border rounded bg-blue-50 text-blue-700 outline-none focus:ring-1 focus:ring-blue-500"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          setUsdRatesByMonth(prev => ({ ...prev, [monthFilter]: tempRate }));
+                          setIsEditingRate(false);
+                        }
+                        if (e.key === 'Escape') setIsEditingRate(false);
+                      }}
+                    />
+                    <button 
+                      onClick={() => {
+                        setUsdRatesByMonth(prev => ({ ...prev, [monthFilter]: tempRate }));
+                        setIsEditingRate(false);
+                      }}
+                      className="p-0.5 bg-blue-600 text-white rounded hover:bg-blue-700"
+                    >
+                      <Check size={10} />
+                    </button>
+                  </div>
+                ) : (
+                  <span 
+                    className="text-xs font-black text-blue-600 leading-tight cursor-pointer hover:underline decoration-dotted underline-offset-2"
+                    onClick={() => {
+                      setTempRate(currentUsdRate);
+                      setIsEditingRate(true);
+                    }}
+                    title="Klik untuk edit manual"
+                  >
+                    {isFetchingRate ? (
+                      <span className="animate-pulse">FETCHING...</span>
+                    ) : (
+                      `Rp ${currentUsdRate.toLocaleString('id-ID')}`
+                    )}
+                  </span>
+                )}
+              </div>
+              <div 
+                className={`p-1.5 rounded-lg bg-blue-50 text-blue-600 cursor-pointer hover:bg-blue-100 transition-colors ${isFetchingRate ? 'animate-spin' : ''}`}
+                onClick={() => {
+                  const updateRate = async () => {
+                    setIsFetchingRate(true);
+                    const monthIndex = monthsList.indexOf(monthFilter);
+                    if (monthIndex !== -1) {
+                      const lastDay = new Date(parseInt(selectedYear), monthIndex + 1, 0);
+                      const dateStr = lastDay.toISOString().split('T')[0];
+                      const rate = await fetchExchangeRate(dateStr);
+                      if (rate) {
+                        setUsdRatesByMonth(prev => ({ ...prev, [monthFilter]: rate }));
+                        setTempRate(rate);
+                      } else {
+                        alert('Could not fetch exchange rate. Please check your internet connection or try again later.');
+                      }
+                    }
+                    setIsFetchingRate(false);
+                  };
+                  updateRate();
+                }}
+              >
+                <RefreshCw size={12} />
+              </div>
+            </div>
           </div>
 
           {/* Top Stats Grid */}
@@ -955,12 +1724,12 @@ export default function App() {
                         axisLine={false} 
                         tickLine={false} 
                         tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }}
-                        tickFormatter={(value) => `${value / 1000000}M`}
+                        tickFormatter={(value) => `${value / 1000000000}B`}
                       />
                       <Tooltip 
                         cursor={{ fill: '#f8fafc' }}
                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                        formatter={(value: number) => formatCurrency(value)}
+                        formatter={(value: number) => [`${(value / 1000000000).toFixed(2)} B`, 'Amount']}
                       />
                       <Bar dataKey="inflow" fill="#1e3a8a" radius={[4, 4, 0, 0]} barSize={40} />
                       <Bar dataKey="outflow" fill="#2563eb" radius={[4, 4, 0, 0]} barSize={40} />
@@ -970,7 +1739,7 @@ export default function App() {
                 <div className="grid grid-cols-3 gap-4 mt-6">
                   <div className="text-center relative group">
                     <div className="flex items-center justify-center gap-1 mb-1">
-                      <p className="text-[10px] font-bold text-gray-400 uppercase">Total Targets For {monthFilter === 'All' ? 'Year' : monthFilter.toUpperCase()}</p>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase">Total Targets For {monthFilter.toUpperCase()}</p>
                       <button 
                         onClick={() => {
                           setTempTarget(dummyTarget);
@@ -1003,14 +1772,14 @@ export default function App() {
                     )}
                   </div>
                   <div className="text-center">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Total Actuals For {monthFilter === 'All' ? 'Year' : monthFilter.toUpperCase()}</p>
-                    <p className="text-xl font-black text-gray-800">{(totalActuals / 1000000).toFixed(0)} M</p>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Total Balance For {monthFilter.toUpperCase()}</p>
+                    <p className="text-xl font-black text-gray-800">{(Math.ceil(totalActuals) / 1000000).toFixed(0)} M</p>
                   </div>
                   <div className="text-center">
                     <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">GAP</p>
                     <div className={`flex items-center justify-center gap-1 ${gapValue >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                       <span className="text-xl font-black">{(gapValue / 1000000).toFixed(0)} M</span>
-                      <span className="text-[10px] font-bold">{gapValue >= 0 ? '▲' : '▼'} {Math.abs(gapPercentage).toFixed(0)}%</span>
+                      <span className="text-[10px] font-bold">{gapValue >= 0 ? '▲' : '▼'} {Math.round(Math.abs(gapPercentage))}%</span>
                     </div>
                   </div>
                 </div>
@@ -1093,9 +1862,10 @@ export default function App() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* GAP Indicators */}
             <div className="lg:col-span-6 grid grid-cols-3 gap-4">
-              {gaps.map((gap) => {
+              {(gapsByMonth[monthFilter] || gaps).map((gap) => {
+                const amountInIdr = gap.currency === 'USD' ? gap.amount * currentUsdRate : gap.amount;
                 const percentage = monthlyBalance !== 0 
-                  ? Math.min(100, Math.max(0, Math.abs((gap.amount / monthlyBalance) * 100))) 
+                  ? Math.min(100, Math.max(0, Math.abs((amountInIdr / monthlyBalance) * 100))) 
                   : 0;
                 
                 return (
@@ -1149,9 +1919,20 @@ export default function App() {
                         />
                       </div>
                     ) : (
-                      <>
+                      <div className="flex flex-col items-center">
                         <p className="text-sm font-black text-gray-800">{formatCurrency(gap.amount, (gap as any).currency)}</p>
-                      </>
+                        {gap.currency === 'USD' && (
+                          <div className="mt-1 flex flex-col items-center animate-in fade-in slide-in-from-top-1 duration-300">
+                            <p className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                              ≈ {formatCurrency(gap.amount * currentUsdRate, 'IDR')}
+                            </p>
+                            <div className="flex items-center gap-1 mt-1 opacity-60">
+                              <RefreshCw size={8} className={isFetchingRate ? 'animate-spin' : ''} />
+                              <span className="text-[8px] font-medium text-gray-400">BI Rate: {currentUsdRate.toLocaleString('id-ID')}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 );
@@ -1162,18 +1943,7 @@ export default function App() {
             <div className="lg:col-span-6 bg-white p-6 rounded-3xl border border-gray-100 shadow-sm overflow-hidden relative group">
             <div className="flex justify-between items-center mb-4">
                 <div className="flex items-center gap-4">
-                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Branch Details</h3>
-                  {/* Month Filter for Table */}
-                  <div className="relative group">
-                    <select 
-                      value={monthFilter}
-                      onChange={(e) => setMonthFilter(e.target.value)}
-                      className="appearance-none bg-gray-50 border border-gray-100 text-gray-700 text-[10px] font-bold rounded-lg px-3 py-1 pr-8 focus:outline-none focus:ring-1 focus:ring-blue-100 transition-all cursor-pointer"
-                    >
-                      {months.map(m => <option key={m} value={m}>{m === 'All' ? 'All Months' : m}</option>)}
-                    </select>
-                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={10} />
-                  </div>
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Cash Balance</h3>
                 </div>
                 <button 
                   onClick={() => branchFileInputRef.current?.click()}
@@ -1190,34 +1960,55 @@ export default function App() {
                   accept=".xlsx, .xls"
                 />
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
+              <div className="overflow-x-auto custom-scrollbar border border-gray-100 rounded-xl">
+                <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="border-b border-gray-50">
-                      <th className="pb-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Cabang</th>
-                      <th className="pb-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">BRI</th>
-                      <th className="pb-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">BNI</th>
-                      <th className="pb-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Mandiri</th>
-                      <th className="pb-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Others</th>
+                    <tr className="bg-gray-50/50">
+                      <th className="p-3 border border-gray-100 text-[10px] font-black text-gray-400 uppercase tracking-wider whitespace-nowrap min-w-[150px]">Cabang</th>
+                      <th className="p-3 border border-gray-100 text-[10px] font-black text-gray-800 uppercase tracking-wider whitespace-nowrap">BRI</th>
+                      <th className="p-3 border border-gray-100 text-[10px] font-black text-gray-800 uppercase tracking-wider whitespace-nowrap">BNI</th>
+                      <th className="p-3 border border-gray-100 text-[10px] font-black text-gray-800 uppercase tracking-wider whitespace-nowrap">MANDIRI</th>
+                      <th className="p-3 border border-gray-100 text-[10px] font-black text-gray-800 uppercase tracking-wider whitespace-nowrap">BTN</th>
+                      <th className="p-3 border border-gray-100 text-[10px] font-black text-gray-800 uppercase tracking-wider whitespace-nowrap">CIMB</th>
+                      <th className="p-3 border border-gray-100 text-[10px] font-black text-gray-800 uppercase tracking-wider whitespace-nowrap">BCA</th>
+                      <th className="p-3 border border-gray-100 text-[10px] font-black text-gray-800 uppercase tracking-wider whitespace-nowrap">BRI AGRO</th>
+                      <th className="p-3 border border-gray-100 text-[10px] font-black text-gray-800 uppercase tracking-wider whitespace-nowrap">BSI</th>
+                      <th className="p-3 border border-gray-100 text-[10px] font-black text-gray-800 uppercase tracking-wider whitespace-nowrap">BJB</th>
+                      <th className="p-3 border border-gray-100 text-[10px] font-black text-blue-700 uppercase tracking-wider whitespace-nowrap bg-blue-50/50">Total</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {branchData.map((row, i) => (
-                      <tr key={i} className="hover:bg-gray-50 transition-colors">
-                        <td className="py-4 text-xs font-black text-gray-800">{row.dept}</td>
-                        <td className="py-4 text-xs font-medium text-gray-500">{row.bri === 0 ? '-' : formatCurrency(row.bri)}</td>
-                        <td className="py-4 text-xs font-medium text-gray-500">{row.bni === 0 ? '-' : formatCurrency(row.bni)}</td>
-                        <td className="py-4 text-xs font-medium text-gray-500">{row.mandiri === 0 ? '-' : formatCurrency(row.mandiri)}</td>
-                        <td className="py-4 text-xs font-medium text-gray-500">{row.others === 0 ? '-' : formatCurrency(row.others)}</td>
-                      </tr>
-                    ))}
+                  <tbody>
+                    {branchData.map((row, i) => {
+                      const rowTotal = (row.bri || 0) + (row.bni || 0) + (row.mandiri || 0) + (row.btn || 0) + (row.cimb || 0) + (row.bca || 0) + (row.bri_agro || 0) + (row.bsi || 0) + (row.bjb || 0);
+                      return (
+                        <tr key={i} className="hover:bg-gray-50/30 transition-colors">
+                          <td className="p-3 border border-gray-100 text-[11px] font-black text-[#1e3a8a] uppercase tracking-tight whitespace-nowrap bg-gray-50/20">{row.dept}</td>
+                          <td className="p-3 border border-gray-100 text-[11px] font-medium text-gray-600 whitespace-nowrap">{row.bri === 0 ? '-' : formatCurrency(row.bri)}</td>
+                          <td className="p-3 border border-gray-100 text-[11px] font-medium text-gray-600 whitespace-nowrap">{row.bni === 0 ? '-' : formatCurrency(row.bni)}</td>
+                          <td className="p-3 border border-gray-100 text-[11px] font-medium text-gray-600 whitespace-nowrap">{row.mandiri === 0 ? '-' : formatCurrency(row.mandiri)}</td>
+                          <td className="p-3 border border-gray-100 text-[11px] font-medium text-gray-600 whitespace-nowrap">{row.btn === 0 ? '-' : formatCurrency(row.btn)}</td>
+                          <td className="p-3 border border-gray-100 text-[11px] font-medium text-gray-600 whitespace-nowrap">{row.cimb === 0 ? '-' : formatCurrency(row.cimb)}</td>
+                          <td className="p-3 border border-gray-100 text-[11px] font-medium text-gray-600 whitespace-nowrap">{row.bca === 0 ? '-' : formatCurrency(row.bca)}</td>
+                          <td className="p-3 border border-gray-100 text-[11px] font-medium text-gray-600 whitespace-nowrap">{row.bri_agro === 0 ? '-' : formatCurrency(row.bri_agro)}</td>
+                          <td className="p-3 border border-gray-100 text-[11px] font-medium text-gray-600 whitespace-nowrap">{row.bsi === 0 ? '-' : formatCurrency(row.bsi)}</td>
+                          <td className="p-3 border border-gray-100 text-[11px] font-medium text-gray-600 whitespace-nowrap">{row.bjb === 0 ? '-' : formatCurrency(row.bjb)}</td>
+                          <td className="p-3 border border-gray-100 text-[11px] font-black text-blue-700 whitespace-nowrap bg-blue-50/20">{formatCurrency(rowTotal)}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             </div>
           </div>
-
-          {/* Recent Activity Section */}
+        </>
+        ) : activeTab === 'projection' ? (
+          <div className="space-y-8">
+            <CFProjection data={projectionData} setData={setProjectionData} />
+            <CFComparisonChart projectionData={projectionData} actualData={actualData} />
+            <CFActual data={actualData} setData={setActualData} />
+          </div>
+        ) : (
           <section className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
               <div className="flex items-center gap-4">
@@ -1281,7 +2072,7 @@ export default function App() {
                     onChange={(e) => setMonthFilter(e.target.value)}
                     className="appearance-none bg-gray-50 border border-gray-100 text-gray-700 text-xs font-bold rounded-xl px-4 py-2.5 pr-10 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer"
                   >
-                    {months.map(m => <option key={m} value={m}>{m === 'All' ? 'All Months' : m}</option>)}
+                    {months.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
                 </div>
@@ -1347,7 +2138,8 @@ export default function App() {
               </table>
             </div>
           </section>
-        </div>
+        )}
+      </div>
       </main>
     </div>
   );
