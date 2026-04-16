@@ -906,7 +906,7 @@ export default function App() {
   const filteredActivity = useMemo(() => {
     return activities.filter(item => {
       const typeMatch = typeFilter === 'All' || item.type === typeFilter;
-      const monthMatch = item.month === monthFilter;
+      const monthMatch = monthFilter === 'All Month' || item.month === monthFilter;
       return typeMatch && monthMatch;
     });
   }, [activities, typeFilter, monthFilter]);
@@ -2067,13 +2067,14 @@ export default function App() {
 
                 {/* Month Filter */}
                 <div className="relative group">
-                  <select 
-                    value={monthFilter}
-                    onChange={(e) => setMonthFilter(e.target.value)}
-                    className="appearance-none bg-gray-50 border border-gray-100 text-gray-700 text-xs font-bold rounded-xl px-4 py-2.5 pr-10 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer"
-                  >
-                    {months.map(m => <option key={m} value={m}>{m}</option>)}
-                  </select>
+                    <select 
+                      value={monthFilter}
+                      onChange={(e) => setMonthFilter(e.target.value)}
+                      className="appearance-none bg-gray-50 border border-gray-100 text-gray-700 text-xs font-bold rounded-xl px-4 py-2.5 pr-10 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer"
+                    >
+                      <option value="All Month">All Month</option>
+                      {months.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
                 </div>
               </div>
