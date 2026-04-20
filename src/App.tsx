@@ -1783,92 +1783,89 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm relative group">
-                <div className="flex justify-between items-center mb-6">
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-black text-gray-800 tracking-tight">Bank Account Status</h2>
-                    <button 
-                      onClick={() => {
-                        setTempBankStatus(bankStatus);
-                        setIsEditingBank(!isEditingBank);
-                      }}
-                      className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-blue-600 transition-colors"
-                    >
-                      <Edit2 size={14} />
-                    </button>
-                  </div>
+              {/* GAP Indicators moved here to swap with Bank Account Status */}
+              <div className="flex flex-col gap-3">
+                {(gapsByMonth[monthFilter] || gaps).map((gap) => {
+                  const amountInIdr = gap.currency === 'USD' ? gap.amount * currentUsdRate : gap.amount;
+                  const percentage = monthlyBalance !== 0 
+                    ? Math.min(100, Math.max(0, Math.abs((amountInIdr / monthlyBalance) * 100))) 
+                    : 0;
                   
-                  {isEditingBank ? (
-                    <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-xl border border-gray-100 shadow-inner animate-in fade-in zoom-in duration-200">
-                      <div className="space-y-1">
-                        <label className="text-[8px] font-bold text-gray-400 uppercase block">Current</label>
-                        <input 
-                          type="number" 
-                          value={tempBankStatus.current}
-                          onChange={(e) => setTempBankStatus({...tempBankStatus, current: parseInt(e.target.value) || 0})}
-                          className="w-16 px-2 py-1 text-xs font-bold border rounded bg-white focus:ring-1 focus:ring-blue-500 outline-none"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[8px] font-bold text-gray-400 uppercase block">Closed</label>
-                        <input 
-                          type="number" 
-                          value={tempBankStatus.closed}
-                          onChange={(e) => setTempBankStatus({...tempBankStatus, closed: parseInt(e.target.value) || 0})}
-                          className="w-16 px-2 py-1 text-xs font-bold border rounded bg-white focus:ring-1 focus:ring-blue-500 outline-none"
-                        />
-                      </div>
+                  return (
+                    <div key={gap.id} className="bg-white p-4 rounded-3xl border border-gray-100 shadow-sm flex items-center gap-4 relative group h-[114px] overflow-hidden">
                       <button 
-                        onClick={handleSaveBankStatus}
-                        className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                        onClick={() => toggleGapEdit(gap.id)}
+                        className="absolute top-2 right-2 p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-blue-600 transition-colors opacity-0 group-hover:opacity-100"
                       >
-                        <Save size={14} />
+                        {gap.isEditing ? <Save size={12} className="text-blue-600" /> : <Edit2 size={12} />}
                       </button>
-                    </div>
-                  ) : (
-                    <div className="flex gap-4">
-                      <div className="text-center">
-                        <p className="text-[8px] font-bold text-gray-400 uppercase mb-1">Current</p>
-                        <div className="flex items-center gap-1 text-blue-600">
-                          <span className="w-1.5 h-1.5 bg-blue-600 rounded-full"></span>
-                          <span className="text-sm font-black">{bankStatus.current}</span>
-                        </div>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-[8px] font-bold text-gray-400 uppercase mb-1">Closed</p>
-                        <div className="flex items-center gap-1 text-blue-900">
-                          <span className="w-1.5 h-1.5 bg-blue-900 rounded-full"></span>
-                          <span className="text-sm font-black">{bankStatus.closed}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
 
-                <div className="h-48 relative">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={[
-                          { name: 'Current', value: bankStatus.current },
-                          { name: 'Closed', value: bankStatus.closed },
-                        ]}
-                        innerRadius={45}
-                        outerRadius={75}
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        <Cell fill="#2563eb" />
-                        <Cell fill="#1e3a8a" />
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <span className="text-xl font-black text-gray-800">{bankStatus.current + bankStatus.closed}</span>
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Total</span>
-                  </div>
-                </div>
+                      <div className="relative w-14 h-14 shrink-0">
+                        <svg className="w-full h-full transform -rotate-90" viewBox="0 0 80 80">
+                          <circle
+                            cx="40"
+                            cy="40"
+                            r="34"
+                            stroke="currentColor"
+                            strokeWidth="8"
+                            fill="transparent"
+                            className="text-gray-100"
+                          />
+                          <circle
+                            cx="40"
+                            cy="40"
+                            r="34"
+                            stroke="currentColor"
+                            strokeWidth="8"
+                            fill="transparent"
+                            strokeDasharray={213.6}
+                            strokeDashoffset={213.6 - (213.6 * percentage) / 100}
+                            strokeLinecap="round"
+                            style={{ color: gap.color }}
+                          />
+                        </svg>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <span className="text-xs font-black" style={{ color: gap.color }}>{Math.round(percentage)}%</span>
+                        </div>
+                      </div>
+                      
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-black text-gray-400 uppercase mb-0.5 tracking-tight">{gap.name}</p>
+                        
+                        {gap.isEditing ? (
+                          <div className="mt-1 animate-in fade-in slide-in-from-bottom-1 duration-200">
+                            <input 
+                              type="number"
+                              value={gap.amount}
+                              onChange={(e) => updateGapAmount(gap.id, parseInt(e.target.value) || 0)}
+                              className="w-full px-2 py-0.5 text-xs font-bold border rounded bg-gray-50 focus:ring-1 focus:ring-blue-500 outline-none"
+                              autoFocus
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex flex-col">
+                            <p className="text-sm font-black text-gray-800 leading-none">
+                              {gap.currency === 'USD' ? (
+                                formatCurrency(gap.amount, 'USD')
+                              ) : (
+                                <>
+                                  {formatMiliar(gap.amount)} <span className="text-[10px] text-gray-400 font-bold">Billion</span>
+                                </>
+                              )}
+                            </p>
+                            {gap.currency === 'USD' && (
+                              <div className="mt-1 flex flex-col items-start animate-in fade-in slide-in-from-top-1 duration-300">
+                                <p className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                                  ≈ {formatMiliar(gap.amount * currentUsdRate)} Billion
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -1930,7 +1927,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="overflow-x-auto custom-scrollbar border border-gray-100 rounded-xl max-h-[450px] overflow-y-auto">
+                <div className="overflow-x-auto custom-scrollbar border border-gray-100 rounded-xl h-[390px] overflow-y-auto">
                   <table className="w-full text-left border-separate border-spacing-0">
                     <thead className="sticky top-0 z-10">
                       <tr className="bg-gray-50/95 backdrop-blur-sm shadow-sm">
@@ -2074,95 +2071,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Bottom Row: GAP Analysis & Table */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* GAP Indicators */}
-            <div className="lg:col-span-12 grid grid-cols-3 gap-6">
-              {(gapsByMonth[monthFilter] || gaps).map((gap) => {
-                const amountInIdr = gap.currency === 'USD' ? gap.amount * currentUsdRate : gap.amount;
-                const percentage = monthlyBalance !== 0 
-                  ? Math.min(100, Math.max(0, Math.abs((amountInIdr / monthlyBalance) * 100))) 
-                  : 0;
-                
-                return (
-                  <div key={gap.id} className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm flex flex-col items-center text-center relative group">
-                    <button 
-                      onClick={() => toggleGapEdit(gap.id)}
-                      className="absolute top-4 right-4 p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-blue-600 transition-colors"
-                    >
-                      {gap.isEditing ? <Save size={14} className="text-blue-600" /> : <Edit2 size={14} />}
-                    </button>
-
-                    <div className="relative w-20 h-20 mb-4">
-                      <svg className="w-full h-full transform -rotate-90">
-                        <circle
-                          cx="40"
-                          cy="40"
-                          r="34"
-                          stroke="currentColor"
-                          strokeWidth="8"
-                          fill="transparent"
-                          className="text-gray-100"
-                        />
-                        <circle
-                          cx="40"
-                          cy="40"
-                          r="34"
-                          stroke="currentColor"
-                          strokeWidth="8"
-                          fill="transparent"
-                          strokeDasharray={213.6}
-                          strokeDashoffset={213.6 - (213.6 * percentage) / 100}
-                          strokeLinecap="round"
-                          style={{ color: gap.color }}
-                        />
-                      </svg>
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="text-lg font-black" style={{ color: gap.color }}>{Math.round(percentage)}%</span>
-                      </div>
-                    </div>
-                    
-                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">{gap.name}</p>
-                    
-                    {gap.isEditing ? (
-                      <div className="mt-1 animate-in fade-in slide-in-from-bottom-1 duration-200">
-                        <input 
-                          type="number"
-                          value={gap.amount}
-                          onChange={(e) => updateGapAmount(gap.id, parseInt(e.target.value) || 0)}
-                          className="w-full px-2 py-1 text-xs font-bold border rounded bg-gray-50 focus:ring-1 focus:ring-blue-500 outline-none text-center"
-                          autoFocus
-                        />
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center">
-                        <p className="text-sm font-black text-gray-800">
-                          {gap.currency === 'USD' ? (
-                            formatCurrency(gap.amount, 'USD')
-                          ) : (
-                            <>
-                              {formatMiliar(gap.amount)} <span className="text-[10px] text-gray-400">Billion</span>
-                            </>
-                          )}
-                        </p>
-                        {gap.currency === 'USD' && (
-                          <div className="mt-1 flex flex-col items-center animate-in fade-in slide-in-from-top-1 duration-300">
-                            <p className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full whitespace-nowrap">
-                              ≈ {formatMiliar(gap.amount * currentUsdRate)} Billion
-                            </p>
-                            <div className="flex items-center gap-1 mt-1 opacity-60">
-                              <RefreshCw size={8} className={isFetchingRate ? 'animate-spin' : ''} />
-                              <span className="text-[8px] font-medium text-gray-400">BI Rate: {currentUsdRate.toLocaleString('id-ID')}</span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
         </>
         ) : activeTab === 'projection' ? (
           <div className="space-y-8">
