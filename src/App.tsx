@@ -1125,6 +1125,16 @@ export default function App() {
 
   const monthsList = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
+  const currentMonthCashBalance = useMemo(() => {
+    const monthData = accountBalancesByMonth[monthFilter] || [];
+    if (monthData.length === 0) return 0;
+    const sortedDates = [...new Set(monthData.map(a => a.date))].sort().reverse();
+    const latestDate = sortedDates[0];
+    return monthData
+      .filter(a => a.date === latestDate)
+      .reduce((sum, acc) => sum + (acc.endingBalance || 0), 0);
+  }, [accountBalancesByMonth, monthFilter]);
+
   const cumulativeMonthlyBalances = useMemo(() => {
     const cashBalances: Record<string, number> = {};
     const totalBalances: Record<string, number> = {};
@@ -1496,14 +1506,7 @@ export default function App() {
             exit={{ width: 0, opacity: 0 }}
             className="bg-white border-r border-gray-200 flex flex-col overflow-hidden whitespace-nowrap"
           >
-            <div className="p-6 flex items-center gap-3 border-bottom border-gray-100">
-              <div className="w-10 h-10 bg-[#1e3a8a] rounded-lg flex items-center justify-center text-white shrink-0">
-                <DollarSign size={24} />
-              </div>
-              <span className="font-bold text-xl tracking-tight text-[#1e3a8a]">FINANCE</span>
-            </div>
-
-            <nav className="flex-1 px-4 py-6 space-y-1">
+            <nav className="flex-1 px-4 py-10 space-y-1">
               <button 
                 onClick={() => setActiveTab('dashboard')}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
@@ -1786,19 +1789,29 @@ export default function App() {
               {/* GAP Indicators moved here to swap with Bank Account Status */}
               <div className="flex flex-col gap-3">
                 {(gapsByMonth[monthFilter] || gaps).map((gap) => {
-                  const amountInIdr = gap.currency === 'USD' ? gap.amount * currentUsdRate : gap.amount;
+                  // If it's the Giro card, it refers to the total balance from Cash Balance card
+                  const gapAmount = gap.id === 'giro' ? currentMonthCashBalance : gap.amount;
+                  const amountInIdr = gap.currency === 'USD' ? gapAmount * currentUsdRate : gapAmount;
                   const percentage = monthlyBalance !== 0 
                     ? Math.min(100, Math.max(0, Math.abs((amountInIdr / monthlyBalance) * 100))) 
                     : 0;
                   
                   return (
                     <div key={gap.id} className="bg-white p-4 rounded-3xl border border-gray-100 shadow-sm flex items-center gap-4 relative group h-[114px] overflow-hidden">
-                      <button 
-                        onClick={() => toggleGapEdit(gap.id)}
-                        className="absolute top-2 right-2 p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-blue-600 transition-colors opacity-0 group-hover:opacity-100"
-                      >
-                        {gap.isEditing ? <Save size={12} className="text-blue-600" /> : <Edit2 size={12} />}
-                      </button>
+                      {gap.id !== 'giro' && (
+                        <button 
+                          onClick={() => toggleGapEdit(gap.id)}
+                          className="absolute top-2 right-2 p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-blue-600 transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          {gap.isEditing ? <Save size={12} className="text-blue-600" /> : <Edit2 size={12} />}
+                        </button>
+                      )}
+                      
+                      {gap.id === 'giro' && (
+                        <div className="absolute top-2 right-2 p-1 text-gray-300 transition-colors" title="Auto-synced from Cash Balance">
+                          <Check size={12} />
+                        </div>
+                      )}
 
                       <div className="relative w-14 h-14 shrink-0">
                         <svg className="w-full h-full transform -rotate-90" viewBox="0 0 80 80">
@@ -1832,7 +1845,7 @@ export default function App() {
                       <div className="flex-1 min-w-0">
                         <p className="text-[10px] font-black text-gray-400 uppercase mb-0.5 tracking-tight">{gap.name}</p>
                         
-                        {gap.isEditing ? (
+                        {gap.isEditing && gap.id !== 'giro' ? (
                           <div className="mt-1 animate-in fade-in slide-in-from-bottom-1 duration-200">
                             <input 
                               type="number"
@@ -1846,17 +1859,17 @@ export default function App() {
                           <div className="flex flex-col">
                             <p className="text-sm font-black text-gray-800 leading-none">
                               {gap.currency === 'USD' ? (
-                                formatCurrency(gap.amount, 'USD')
+                                formatCurrency(gapAmount, 'USD')
                               ) : (
                                 <>
-                                  {formatMiliar(gap.amount)} <span className="text-[10px] text-gray-400 font-bold">Billion</span>
+                                  {formatMiliar(gapAmount)} <span className="text-[10px] text-gray-400 font-bold">Billion</span>
                                 </>
                               )}
                             </p>
                             {gap.currency === 'USD' && (
                               <div className="mt-1 flex flex-col items-start animate-in fade-in slide-in-from-top-1 duration-300">
                                 <p className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full whitespace-nowrap">
-                                  ≈ {formatMiliar(gap.amount * currentUsdRate)} Billion
+                                  ≈ {formatMiliar(gapAmount * currentUsdRate)} Billion
                                 </p>
                               </div>
                             )}
@@ -1876,7 +1889,7 @@ export default function App() {
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                   <div>
                     <h2 className="text-lg font-black text-gray-800 tracking-tight">Cash Balance <span className="text-xs lowercase font-medium text-gray-400 font-bold">(Billion IDR)</span></h2>
-                    <p className="text-xs text-gray-400 font-medium">Bank account balances with Bank and Date filtering</p>
+                    <p className="text-xs text-gray-400 font-medium">Represent Bank Account Balances with Bank Partners</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
                     {/* Bank Filter */}
