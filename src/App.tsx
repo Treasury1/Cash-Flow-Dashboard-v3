@@ -34,7 +34,9 @@ import {
   Edit2,
   Save,
   Check,
-  Wallet
+  Wallet,
+  Folder,
+  FileText
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -55,6 +57,7 @@ import {
 } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
 import { fetchExchangeRate } from './services/exchangeRateService';
+import { fetchSheetData, parseSheetData, parseCashBalanceSheetData, searchSpreadsheets } from './services/googleSheetsService';
 
 // Mock Data
 const bankData = [
@@ -538,6 +541,129 @@ export default function App() {
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Google Sheets state
+  const [spreadsheetId, setSpreadsheetId] = useState(() => localStorage.getItem('google_spreadsheet_id') || '');
+  const [sheetRange, setSheetRange] = useState(() => localStorage.getItem('google_sheet_range') || 'Sheet1!A:G');
+  const [isSheetsLoading, setIsSheetsLoading] = useState(false);
+  const [sheetsError, setSheetsError] = useState<string | null>(null);
+  const [availableSpreadsheets, setAvailableSpreadsheets] = useState<{ id: string; name: string }[]>([]);
+  const [isBrowsing, setIsBrowsing] = useState(false);
+
+  const handleBrowse = async () => {
+    setIsSheetsLoading(true);
+    setSheetsError(null);
+    try {
+      const files = await searchSpreadsheets();
+      setAvailableSpreadsheets(files);
+      setIsBrowsing(true);
+    } catch (error: any) {
+      console.error('Browse Error:', error);
+      setSheetsError(error.message || 'Failed to fetch files from Drive');
+    } finally {
+      setIsSheetsLoading(false);
+    }
+  };
+
+  const handleSheetsSync = async () => {
+    if (!spreadsheetId) {
+      setSheetsError('Please enter a Spreadsheet ID');
+      return;
+    }
+
+    setIsSheetsLoading(true);
+    setSheetsError(null);
+
+    try {
+      localStorage.setItem('google_spreadsheet_id', spreadsheetId);
+      localStorage.setItem('google_sheet_range', sheetRange);
+
+      const targetRange = monthFilter === 'All' ? sheetRange : `${monthFilter}!A:Z`;
+      
+      // Increase timeout to 120 seconds and use Promise.race
+      const fetchPromise = fetchSheetData(spreadsheetId, targetRange);
+      const timeoutPromise = new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('Sync request timed out. Please check your internet connection or reduce the sheet size.')), 120000)
+      );
+
+      const values = await Promise.race([fetchPromise, timeoutPromise]);
+      
+      if (!values || values.length === 0) {
+        setSheetsError(`No data found in ${targetRange}`);
+        return;
+      }
+
+      const headers = values[0].map((h: any) => h.toString().trim().toUpperCase());
+      const isCashBalance = headers.includes('ENDING BALANCE') || headers.includes('SALDO AKHIR') || headers.includes('SALDO') || headers.includes('ENDING_BALANCE');
+
+      if (isCashBalance) {
+        const parsedBalances = parseCashBalanceSheetData(values);
+        
+        setAccountBalancesByMonth(prev => {
+          const updated = { ...prev };
+          const monthsIndon = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+          
+          if (monthFilter === 'All') {
+            monthsIndon.forEach(m => { updated[m] = []; });
+
+            parsedBalances.forEach(item => {
+              const parseDate = (d: string) => {
+                if (!d) return null;
+                const dStr = d.toString().trim();
+                const parts = dStr.split(/[/-]/);
+                if (parts.length === 3) {
+                  if (parts[0].length === 4) return new Date(`${parts[0]}-${parts[1]}-${parts[2]}`);
+                  return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+                }
+                const dt = new Date(dStr);
+                return isNaN(dt.getTime()) ? null : dt;
+              };
+
+              const dateObj = parseDate(item.date);
+              if (dateObj) {
+                const monthName = monthsIndon[dateObj.getMonth()];
+                updated[monthName] = [...(updated[monthName] || []), item];
+              } else {
+                const currentMonth = monthsIndon[new Date().getMonth()];
+                updated[currentMonth] = [...(updated[currentMonth] || []), item];
+              }
+            });
+          } else {
+            updated[monthFilter] = parsedBalances;
+          }
+          
+          localStorage.setItem('finance_account_balances', JSON.stringify(updated));
+          return updated;
+        });
+        setUploadSuccess(true);
+        setTimeout(() => setUploadSuccess(false), 3000);
+      } else {
+        const parsedActivities = parseSheetData(values);
+        if (parsedActivities.length > 0) {
+          setActivities(prev => {
+            const updated = parsedActivities;
+            localStorage.setItem('finance_activities', JSON.stringify(updated));
+            return updated;
+          });
+          setUploadSuccess(true);
+          setTimeout(() => setUploadSuccess(false), 3000);
+        } else {
+          setSheetsError('No valid data found in sheet');
+        }
+      }
+    } catch (error: any) {
+      console.error('Sheets Sync Error:', error);
+      let userFriendlyError = error.message || 'Failed to sync with Google Sheets';
+      
+      if (userFriendlyError.includes('not supported for this document')) {
+        userFriendlyError = 'Error: The file is likely an Excel (.xlsx) file. Please open it in Google Drive and go to "File" > "Save as Google Sheets", then use the ID of the NEW file.';
+      }
+      
+      setSheetsError(userFriendlyError);
+    } finally {
+      setIsSheetsLoading(false);
+    }
+  };
+
   // CF Data States
   const [projectionData, setProjectionData] = useState(() => {
     const saved = localStorage.getItem('finance_cf_projection');
@@ -741,15 +867,21 @@ export default function App() {
   const [accountBalancesByMonth, setAccountBalancesByMonth] = useState<Record<string, any[]>>(() => {
     const saved = localStorage.getItem('finance_account_balances');
     if (saved) {
-      const parsed = JSON.parse(saved);
-      // Explicitly clear months as requested
-      parsed['April'] = [];
-      parsed['Januari'] = [];
-      return parsed;
+      return JSON.parse(saved);
     }
     return {
+      'Januari': [],
+      'Februari': [],
+      'Maret': [],
       'April': [],
-      'Januari': []
+      'Mei': [],
+      'Juni': [],
+      'Juli': [],
+      'Agustus': [],
+      'September': [],
+      'Oktober': [],
+      'November': [],
+      'Desember': []
     };
   });
 
@@ -764,12 +896,40 @@ export default function App() {
   const cashBalanceDisplayData = useMemo(() => {
     const currentMonthBalances = accountBalancesByMonth[monthFilter] || [];
     
+    const normalizeDate = (d: string) => {
+      if (!d) return '';
+      let dateStr = d.toString().trim();
+      // If it's already YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+      
+      // Handle DD/MM/YYYY or DD-MM-YYYY
+      const parts = dateStr.split(/[/-]/);
+      if (parts.length === 3) {
+        if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+        return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+      }
+      
+      try {
+        const dateObj = new Date(dateStr);
+        if (!isNaN(dateObj.getTime())) {
+          return dateObj.toISOString().split('T')[0];
+        }
+      } catch (e) {}
+      
+      return dateStr;
+    };
+
     // IF NOT FILTERED: SHOW SUMMARY MODE
     if (!isTableFiltered) {
       if (currentMonthBalances.length === 0) return [];
       
-      // Find latest date in this month's data
-      const sortedDates = [...new Set(currentMonthBalances.map(a => a.date))].sort().reverse();
+      // Find latest date in this month's data using robust parsing
+      const uniqueDates = [...new Set(currentMonthBalances.map(a => normalizeDate(a.date)))];
+      
+      const sortedDates = uniqueDates.sort((a: any, b: any) => {
+        return new Date(b).getTime() - new Date(a).getTime();
+      });
+      
       const latestDate = sortedDates[0];
 
       const groups: Record<string, any> = {};
@@ -784,7 +944,7 @@ export default function App() {
           };
         }
         groups[acc.bank].accounts.add(acc.accountNo);
-        if (acc.date === latestDate) {
+        if (normalizeDate(acc.date) === latestDate) {
           groups[acc.bank].latestBalance += (acc.endingBalance || 0);
         }
       });
@@ -794,7 +954,9 @@ export default function App() {
     // IF FILTERED: SHOW DETAIL LIST MODE
     return currentMonthBalances.filter(acc => {
       const matchBank = tableBankFilter === 'All' || acc.bank === tableBankFilter;
-      const matchDate = !tableDateFilter || acc.date === tableDateFilter;
+      const normalizedAccDate = normalizeDate(acc.date);
+      const normalizedFilterDate = normalizeDate(tableDateFilter);
+      const matchDate = !tableDateFilter || normalizedAccDate === normalizedFilterDate;
       return matchBank && matchDate;
     });
   }, [accountBalancesByMonth, monthFilter, tableBankFilter, tableDateFilter, isTableFiltered]);
@@ -1128,10 +1290,24 @@ export default function App() {
   const currentMonthCashBalance = useMemo(() => {
     const monthData = accountBalancesByMonth[monthFilter] || [];
     if (monthData.length === 0) return 0;
-    const sortedDates = [...new Set(monthData.map(a => a.date))].sort().reverse();
+    
+    const normalizeDate = (d: string) => {
+      if (!d) return '';
+      let dateStr = d.toString().trim();
+      const parts = dateStr.split(/[/-]/);
+      if (parts.length === 3) {
+        if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+        return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+      }
+      return dateStr;
+    };
+
+    const uniqueDates = [...new Set(monthData.map(a => normalizeDate(a.date)))];
+    const sortedDates = uniqueDates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+    
     const latestDate = sortedDates[0];
     return monthData
-      .filter(a => a.date === latestDate)
+      .filter(a => normalizeDate(a.date) === latestDate)
       .reduce((sum, acc) => sum + (acc.endingBalance || 0), 0);
   }, [accountBalancesByMonth, monthFilter]);
 
@@ -1140,6 +1316,17 @@ export default function App() {
     const totalBalances: Record<string, number> = {};
     const monthsOrder = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
     
+    const normalizeDate = (d: string) => {
+      if (!d) return '';
+      let dateStr = d.toString().trim();
+      const parts = dateStr.split(/[/-]/);
+      if (parts.length === 3) {
+        if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+        return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+      }
+      return dateStr;
+    };
+
     // 1. Calculate January Cash Base from Branch Data
     const janData = (branchDataByMonth['Januari'] || []).filter(item => item.dept !== 'xyz');
     const janCashBalance = janData.reduce((acc, row) => {
@@ -1157,9 +1344,12 @@ export default function App() {
     const getUploadedBalanceForMonth = (month: string) => {
       const monthData = accountBalancesByMonth[month] || [];
       if (monthData.length === 0) return 0;
-      const latestDate = [...new Set(monthData.map(a => a.date))].sort().reverse()[0];
+      
+      const uniqueDates = [...new Set(monthData.map(a => normalizeDate(a.date)))];
+      const latestDate = uniqueDates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+      
       return monthData
-        .filter(a => a.date === latestDate)
+        .filter(a => normalizeDate(a.date) === latestDate)
         .reduce((sum, acc) => sum + (acc.endingBalance || 0), 0);
     };
 
@@ -1892,6 +2082,91 @@ export default function App() {
                     <p className="text-xs text-gray-400 font-medium">Represent Bank Account Balances with Bank Partners</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
+                    {/* Google Sheets Sync Section */}
+                    <div className="flex flex-col gap-2 relative">
+                      <div className="flex items-center gap-2 p-1.5 bg-gray-50 rounded-2xl border border-gray-100 shadow-sm">
+                        <button 
+                          onClick={handleBrowse}
+                          disabled={isSheetsLoading}
+                          className="flex items-center justify-center p-2 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-all text-gray-500"
+                          title="Browse from Drive"
+                        >
+                          <Folder size={16} />
+                        </button>
+                        <input 
+                          type="text" 
+                          placeholder="Spreadsheet ID..."
+                          value={spreadsheetId}
+                          onChange={(e) => setSpreadsheetId(e.target.value)}
+                          className="px-4 py-2 bg-white border border-gray-200 text-xs font-bold rounded-xl outline-none focus:ring-2 focus:ring-green-100 transition-all w-64"
+                        />
+                        <button 
+                          onClick={handleSheetsSync}
+                          disabled={isSheetsLoading}
+                          className={`flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-black transition-all ${
+                            isSheetsLoading 
+                              ? 'bg-gray-100 text-gray-400' 
+                              : 'bg-green-600 text-white hover:bg-green-700 shadow-md shadow-green-100'
+                          }`}
+                        >
+                          {isSheetsLoading ? (
+                            <RefreshCw size={14} className="animate-spin" />
+                          ) : (
+                            <RefreshCw size={14} />
+                          )}
+                          {isSheetsLoading ? 'Syncing...' : 'Sync from Sheets'}
+                        </button>
+                      </div>
+
+                      {/* Browse Dropdown */}
+                      <AnimatePresence>
+                        {isBrowsing && (
+                          <motion.div 
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="absolute top-full left-0 mt-2 w-80 bg-white border border-gray-100 rounded-2xl shadow-xl z-50 overflow-hidden"
+                          >
+                            <div className="p-3 border-b border-gray-50 bg-gray-50/50 flex justify-between items-center">
+                              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Select Spreadsheet</span>
+                              <button onClick={() => setIsBrowsing(false)} className="text-gray-400 hover:text-gray-600">
+                                <X size={14} />
+                              </button>
+                            </div>
+                            <div className="max-h-60 overflow-y-auto">
+                              {availableSpreadsheets.length > 0 ? (
+                                availableSpreadsheets.map(file => (
+                                  <button
+                                    key={file.id}
+                                    onClick={() => {
+                                      setSpreadsheetId(file.id);
+                                      setIsBrowsing(false);
+                                    }}
+                                    className="w-full text-left px-4 py-3 text-xs font-bold text-gray-700 hover:bg-green-50 transition-colors flex items-center gap-3 border-b border-gray-50 last:border-0"
+                                  >
+                                    <div className="p-1.5 bg-green-100/50 text-green-600 rounded-lg">
+                                      <FileText size={14} />
+                                    </div>
+                                    <span className="truncate">{file.name}</span>
+                                  </button>
+                                ))
+                              ) : (
+                                <div className="p-8 text-center text-gray-400 text-xs italic">
+                                  No spreadsheets found.
+                                </div>
+                              )}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+
+                    {sheetsError && (
+                      <p className="text-[10px] font-bold text-red-500 animate-in fade-in slide-in-from-top-1 ml-2">
+                        {sheetsError}
+                      </p>
+                    )}
+
                     {/* Bank Filter */}
                     <div className="relative">
                       <select 
