@@ -36,7 +36,13 @@ import {
   Check,
   Wallet,
   Folder,
-  FileText
+  FileText,
+  CreditCard,
+  Clock,
+  ShieldCheck,
+  Zap,
+  Activity,
+  AlertCircle
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -53,7 +59,8 @@ import {
   LineChart,
   Line,
   AreaChart,
-  Area
+  Area,
+  ReferenceLine
 } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
 import { fetchExchangeRate } from './services/exchangeRateService';
@@ -1724,6 +1731,19 @@ export default function App() {
               </button>
 
               <button 
+                onClick={() => setActiveTab('incoming-payment')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                  activeTab === 'incoming-payment' 
+                    ? 'bg-[#2563eb] text-white shadow-lg shadow-blue-100' 
+                    : 'text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                <CreditCard size={20} className="shrink-0" />
+                <span className="font-medium">Incoming Payment</span>
+                {activeTab === 'incoming-payment' && <motion.div layoutId="active" className="ml-auto w-1.5 h-1.5 bg-white rounded-full" />}
+              </button>
+
+              <button 
                 onClick={() => setActiveTab('transactions')}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                   activeTab === 'transactions' 
@@ -2316,6 +2336,10 @@ export default function App() {
                           <stop offset="5%" stopColor="#ef4444" stopOpacity={0.1}/>
                           <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
                         </linearGradient>
+                        <linearGradient id="colorTrend" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#2563eb" stopOpacity={0.1}/>
+                          <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
+                        </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                       <XAxis 
@@ -2365,6 +2389,254 @@ export default function App() {
             <CFProjection data={projectionData} setData={setProjectionData} />
             <CFComparisonChart projectionData={projectionData} actualData={actualData} />
             <CFActual data={actualData} setData={setActualData} />
+          </div>
+        ) : activeTab === 'incoming-payment' ? (
+          <div className="space-y-8 animate-in fade-in duration-500">
+            {/* 1. Summary Metrics */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {[
+                { label: 'Cash Ratio', value: '1.35', sub: 'Healthy', color: 'text-green-500', icon: ShieldCheck },
+                { label: 'Total Cash', value: '125B', sub: 'Current Assets', color: 'text-blue-600', icon: Wallet },
+                { label: 'Payable 30D', value: '98B', sub: 'Upcoming Obligations', color: 'text-orange-500', icon: Clock },
+                { label: 'Net Cashflow', value: '+27B', sub: 'Surplus', color: 'text-green-500', icon: TrendingUp },
+              ].map((stat, i) => (
+                <div key={i} className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm flex items-center gap-4">
+                  <div className={`p-3 rounded-2xl bg-gray-50 ${stat.color}`}>
+                    <stat.icon size={20} />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider">{stat.label}</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl font-black text-gray-800">{stat.value}</span>
+                      <div className={`w-2 h-2 rounded-full bg-current ${stat.color}`}></div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {[
+                { label: 'Min Buffer', value: '50B', sub: 'Safety Level', color: 'text-gray-400', icon: Zap },
+                { label: 'Liquidity Gap', value: '-10B', sub: 'Gap to Target', color: 'text-red-500', icon: AlertCircle },
+                { label: 'Cash Runway', value: '42 days', sub: 'Operations coverage', color: 'text-blue-600', icon: Activity },
+              ].map((stat, i) => (
+                <div key={i} className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm flex items-center gap-4">
+                  <div className={`p-3 rounded-2xl bg-gray-50 ${stat.color}`}>
+                    <stat.icon size={20} />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider">{stat.label}</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl font-black text-gray-800">{stat.value}</span>
+                      {stat.label === 'Liquidity Gap' && <div className="w-2 h-2 rounded-full bg-red-500"></div>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* 2. Cash Trend & Projection */}
+            <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+              <div className="flex justify-between items-center mb-6">
+                <div>
+                  <h2 className="text-lg font-black text-gray-800 tracking-tight">📊 Cash Trend & Projection</h2>
+                  <p className="text-xs text-gray-400 font-medium uppercase tracking-wider">30–90 Days Outlook</p>
+                </div>
+                <div className="flex gap-4">
+                   <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-blue-600 rounded-full"></div>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase">Projection</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-1 bg-red-500 rounded-full bg-red-500 opacity-50"></div>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Min Buffer (50B)</span>
+                  </div>
+                </div>
+              </div>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={[
+                    { name: 'Jan', val: 140 }, { name: 'Feb', val: 125 }, { name: 'Mar', val: 135 },
+                    { name: 'Today', val: 125 }, { name: 'W1', val: 110 }, { name: 'W2', val: 95 },
+                    { name: 'W3', val: 80 }, { name: 'W4', val: 65 }, { name: 'M2', val: 45 },
+                  ]}>
+                    <defs>
+                      <linearGradient id="colorTrend" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#2563eb" stopOpacity={0.1}/>
+                        <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 700, fill: '#94a3b8'}} />
+                    <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 700, fill: '#94a3b8'}} />
+                    <Tooltip />
+                    <ReferenceLine y={50} stroke="#ef4444" strokeDasharray="5 5" label={{ position: 'right', value: 'Buffer', fill: '#ef4444', fontSize: 10, fontWeight: 900 }} />
+                    <Area type="monotone" dataKey="val" stroke="#2563eb" strokeWidth={3} fillOpacity={1} fill="url(#colorTrend)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex justify-between mt-4 text-[10px] font-black text-gray-400 uppercase tracking-widest px-10">
+                <span>Past</span>
+                <span className="text-blue-600 border-b-2 border-blue-600">Today</span>
+                <span className="text-red-500">Future (Below Threshold)</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* 3. Payment Aging & Top Upcoming Payments */}
+              <div className="space-y-8">
+                {/* Payment Aging */}
+                <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+                  <h2 className="text-sm font-black text-gray-800 tracking-tight uppercase mb-6 flex items-center gap-2">
+                    <History size={16} className="text-red-500" />
+                    📊 Payment Aging
+                  </h2>
+                  <div className="space-y-4">
+                    {[
+                      { label: 'Overdue', value: '15.2B', num: 15.2, indicator: '🔴', color: 'bg-red-500' },
+                      { label: '0–7 Days', value: '40.0B', num: 40.0, indicator: '🟡', color: 'bg-yellow-400' },
+                      { label: '8–14 Days', value: '25.5B', num: 25.5, indicator: null, color: 'bg-blue-500' },
+                      { label: '15–30 Days', value: '18.3B', num: 18.3, indicator: null, color: 'bg-slate-400' },
+                      { label: '>30 Days', value: '10.1B', num: 10.1, indicator: null, color: 'bg-slate-300' },
+                    ].map((item, i) => (
+                      <div key={i} className="flex flex-col gap-2">
+                        <div className="flex items-center justify-between px-0.5">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{item.label}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black text-gray-700">{item.value}</span>
+                            {item.indicator && <span className="text-[10px] leading-none">{item.indicator}</span>}
+                          </div>
+                        </div>
+                        <div className="h-2 w-full bg-gray-50 rounded-full border border-gray-100/50 shadow-inner overflow-hidden">
+                          <motion.div 
+                            initial={{ width: 0 }}
+                            animate={{ width: `${(item.num / 40) * 100}%` }}
+                            transition={{ duration: 1, ease: "easeOut", delay: i * 0.1 }}
+                            className={`h-full rounded-full ${item.color} shadow-sm`}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Top Upcoming Payments */}
+                <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+                  <h2 className="text-sm font-black text-gray-800 tracking-tight uppercase mb-6 flex items-center gap-2">
+                     <TrendingUp size={16} className="text-blue-600" />
+                     🔍 Top Upcoming Payments
+                  </h2>
+                  <div className="space-y-1">
+                    {[
+                      { vendor: 'Vendor A', amount: '10B', due: '25 Apr', color: 'bg-red-500' },
+                      { vendor: 'Vendor B', amount: '8B', due: '26 Apr', color: 'bg-red-500' },
+                      { vendor: 'Vendor C', amount: '7B', due: '27 Apr', color: 'bg-orange-500' },
+                      { vendor: 'Vendor D', amount: '6B', due: '28 Apr', color: 'bg-orange-500' },
+                      { vendor: 'Vendor E', amount: '5B', due: '29 Apr', color: 'bg-green-500' },
+                    ].map((v, i) => (
+                      <div key={i} className="flex items-center justify-between p-3 hover:bg-gray-50 transition-colors rounded-xl border-b border-gray-50 last:border-0">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-2 h-2 rounded-full ${v.color}`}></div>
+                          <span className="text-xs font-bold text-gray-800 tracking-tight">{v.vendor}</span>
+                        </div>
+                        <div className="flex items-center gap-6">
+                          <span className="text-xs font-black text-[#1e3a8a]">{v.amount}</span>
+                          <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{v.due}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. Payment Timeline */}
+              <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col">
+                <h2 className="text-sm font-black text-gray-800 tracking-tight uppercase mb-6 flex items-center gap-2">
+                  <Calendar size={16} className="text-blue-600" />
+                  📅 Payment Timeline (Operational vs Contractual)
+                </h2>
+                <div className="flex-1 min-h-[400px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={[
+                      { date: '20', op: 5, con: 8 },
+                      { date: '22', op: 15, con: 12 },
+                      { date: '24', op: 10, con: 22 },
+                      { date: '26', op: 8, con: 18 },
+                      { date: '28', op: 12, con: 10 },
+                    ]}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 700}} />
+                      <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 700}} />
+                      <Tooltip />
+                      <Legend iconType="circle" wrapperStyle={{fontSize: 10, fontWeight: 900, textTransform: 'uppercase'}} />
+                      <Bar dataKey="op" name="Operational" stackId="a" fill="#93c5fd" radius={[0, 0, 0, 0]} />
+                      <Bar dataKey="con" name="Contractual" stackId="a" fill="#1e3a8a" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+
+
+
+            {/* 6. Payment Detail Table */}
+            <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="flex justify-between items-center mb-6">
+                <div>
+                  <h2 className="text-lg font-black text-gray-800 tracking-tight">📋 Payment Detail Table</h2>
+                  <p className="text-xs text-gray-400 font-medium font-bold">Comprehensive Drill-down analysis</p>
+                </div>
+                <button className="p-2 bg-gray-50 text-gray-400 rounded-xl hover:text-blue-600 transition-colors">
+                  <Filter size={16} />
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b border-gray-50">
+                      <th className="pb-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Vendor</th>
+                      <th className="pb-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Type</th>
+                      <th className="pb-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Amount</th>
+                      <th className="pb-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Due Date</th>
+                      <th className="pb-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Priority</th>
+                      <th className="pb-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {[
+                      { vendor: 'ABC Corp', type: 'Operational', amount: '5B', date: '25 Apr', priority: 'High', status: 'Approved' },
+                      { vendor: 'XYZ Global', type: 'Contractual', amount: '12B', date: '26 Apr', priority: 'Critical', status: 'Pending' },
+                      { vendor: 'DEF Services', type: 'Operational', amount: '3B', date: '27 Apr', priority: 'Medium', status: 'Approved' },
+                      { vendor: 'GHI Projects', type: 'Investment', amount: '8B', date: '28 Apr', priority: 'High', status: 'Review' },
+                      { vendor: 'JKL Logistics', type: 'Operational', amount: '2B', date: '29 Apr', priority: 'Low', status: 'Approved' },
+                    ].map((row, i) => (
+                      <tr key={i} className="hover:bg-gray-50/50 transition-colors group">
+                        <td className="py-4 text-xs font-black text-gray-800">{row.vendor}</td>
+                        <td className="py-4 text-xs font-medium text-gray-500">{row.type}</td>
+                        <td className="py-4 text-xs font-black text-[#1e3a8a]">{row.amount}</td>
+                        <td className="py-4 text-xs font-bold text-gray-400">{row.date}</td>
+                        <td className="py-4">
+                          <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase ${
+                            row.priority === 'Critical' ? 'bg-red-100 text-red-600' : 
+                            row.priority === 'High' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'
+                          }`}>
+                            {row.priority}
+                          </span>
+                        </td>
+                        <td className="py-4 text-right">
+                           <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase ${
+                            row.status === 'Approved' ? 'bg-green-100 text-green-600' : 'bg-yellow-100 text-yellow-600'
+                          }`}>
+                            {row.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         ) : (
           <section className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
@@ -2438,9 +2710,9 @@ export default function App() {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto custom-scrollbar max-h-[500px] overflow-y-auto pr-2">
               <table className="w-full text-left">
-                <thead>
+                <thead className="sticky top-0 bg-white z-10 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
                   <tr className="border-b border-gray-100">
                     <th className="pb-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Date</th>
                     <th className="pb-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Bank</th>
